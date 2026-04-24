@@ -21,6 +21,8 @@ dependencies = [
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "pre-commit>=3.8.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "types-pyyaml>=6.0.12",
@@ -72,4 +74,16 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-ra"
+addopts = "-ra --cov=src/pciv --cov-report=term-missing --cov-fail-under=85"
+
+[tool.coverage.run]
+branch = false
+source = ["src/pciv"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

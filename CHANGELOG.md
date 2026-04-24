@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pytest-cov` and `pre-commit` pinned in the `dev` extra; coverage
+  configured through `[tool.pytest.ini_options].addopts` with
+  `--cov=src/pciv --cov-report=term-missing --cov-fail-under=85`.
+- `tests/test_cli_e2e.py` exercising `pciv run --yes --budget 0.01`
+  end-to-end via Typer's `CliRunner` against a real tmp git repo and
+  stubbed Azure OpenAI clients; asserts the ledger holds exactly one
+  run row, one task row, four `agent_invocations` rows (plan, critique,
+  implement, verify), four matching `cost_events`, and one ship
+  verdict for a 1-subtask, 0-iterate-round pipeline.
+- `tests/test_secret_leak.py` feeds a fake
+  `AZURE_OPENAI_API_KEY=sk-secret-do-not-log` into the environment,
+  runs the full pipeline with stubbed agents, and captures spans with
+  an `InMemorySpanExporter`. Asserts the secret string appears in zero
+  ledger rows, zero stdout lines, and zero span attributes or events.
+- `tests/test_readme_examples.py` parses README code blocks and
+  asserts every recognized shell command parses via `shlex` and its
+  executable resolves on PATH (or is the project CLI).
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
 - `.pre-commit-config.yaml` wiring ruff, ruff-format, mypy (via
   `uv run mypy`), and the standard `pre-commit-hooks` whitespace /
