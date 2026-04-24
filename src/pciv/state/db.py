@@ -42,11 +42,14 @@ class Ledger:
         self.close()
 
     def record_run(self, run_id: str, task: str, budget_usd: float, max_iter: int) -> None:
+        from pciv.redaction import redact
+
+        safe_task = redact(task)
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT OR REPLACE INTO runs (run_id, task, budget_usd, max_iter, started_at, status) "
                 "VALUES (?, ?, ?, ?, ?, 'running')",
-                (run_id, task, budget_usd, max_iter, _utcnow()),
+                (run_id, safe_task, budget_usd, max_iter, _utcnow()),
             )
 
     def finalize_run(self, run_id: str, status: str) -> None:

@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Structured logging: `JsonFormatter` in
+  `src/pciv/telemetry/logging.py` emits `ts`, `level`, `logger`, `msg`,
+  plus `run_id`, `trace_id`, `span_id` when an OTel span is active.
+  Root CLI callback accepts `--verbose`/`--quiet` for DEBUG/WARNING,
+  honors `LOG_FORMAT=json|text` (default `text` on a TTY, `json`
+  otherwise), and attaches a `RedactionFilter` to every handler.
+- Central redaction helper `src/pciv/redaction.py` scrubbing `sk-`
+  API keys, bearer tokens, JWTs, 40+ char hex blobs, and literal
+  values of secret-named env vars (`AZURE_OPENAI_API_KEY`,
+  `OPENAI_API_KEY`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, and any
+  name containing `KEY`/`SECRET`/`TOKEN`/`PASSWORD`/`CONNECTION_STRING`).
+  Available for log records and via `redact_mapping` for span
+  attribute dicts and persisted blobs.
+- `tests/test_secret_leak.py` extended with
+  `test_multiple_secret_shapes_never_leak`: seeds three distinct
+  secret shapes (sk- key, bearer token, JWT) into env + the task
+  prompt and asserts zero occurrences in stdout, captured JSON logs,
+  ledger rows, span attributes, span events, and span names.
+- `pciv doctor` subcommand: reports Python version, `uv` version,
+  git availability, OS, config file resolution, `.pciv/` state-dir
+  writability, and redacted env-var presence as JSON. Exits 0 only
+  when python/uv/git/state_dir_writable checks pass.
+- OTel counters in `pciv.telemetry.metrics`: `runs_total`,
+  `runs_failed_total`, `budget_usd_spent_total`. `tests/test_metrics.py`
+  uses an `InMemoryMetricReader` to assert each name appears after
+  a full `pciv run`.
+- Multi-stage `Dockerfile` at the repo root: builder uses `uv sync
+  --no-dev --frozen`; runtime is `python:3.12-slim`, non-root uid 1001,
+  healthcheck runs `pciv doctor`. `.dockerignore` excludes `.venv`,
+  `.git`, `dist`, `tests`, `docs`, and caches.
+- CI `docker` job builds the image on `ubuntu-latest` and runs
+  `docker run --rm <image> doctor`; nothing is pushed.
+
 - `SECURITY.md` at the repo root: supported-versions table, private
   reporting channels (GitHub private advisories + maintainer email),
   and a 90-day coordinated-disclosure window. Linked from the README.

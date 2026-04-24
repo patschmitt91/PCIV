@@ -99,7 +99,14 @@ class BudgetGovernor:
             self._spent += cost
             line = CostLine(model_id, input_tokens, output_tokens, cost)
             self._lines.append(line)
-            return line
+        try:
+            from pciv.telemetry import budget_usd_spent_total
+
+            budget_usd_spent_total().add(float(cost))
+        except Exception:
+            # Telemetry must never break accounting.
+            pass
+        return line
 
     def lines(self) -> list[CostLine]:
         with self._lock:

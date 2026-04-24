@@ -219,6 +219,7 @@ def test_cli_run_ship_one_subtask_zero_iterate(
     result = runner.invoke(
         app,
         [
+            "run",
             "add a greeting",
             "--yes",
             "--budget",
