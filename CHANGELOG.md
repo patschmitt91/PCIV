@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `.github/workflows/release.yml` — on tag `v*`, build the wheel with
+  `uv build` and upload it as a GitHub Release asset (no PyPI publish).
+- CI `type-check` job runs `uv run mypy --strict src/pciv`
+  independently on ubuntu-latest and windows-latest.
+- CI `pre-commit` job runs `pre-commit run --all-files` on every push
+  and PR.
+- CI `docs-check` job runs `lycheeverse/lychee-action@v2` against
+  `README.md` and `docs/**/*.md`.
 - `pytest-cov` and `pre-commit` pinned in the `dev` extra; coverage
   configured through `[tool.pytest.ini_options].addopts` with
   `--cov=src/pciv --cov-report=term-missing --cov-fail-under=85`.
