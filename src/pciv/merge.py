@@ -10,10 +10,13 @@ here to keep this module offline-testable.
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,9 @@ class MergeResult:
     integration_branch: str
     merged_tasks: list[str]
     skipped_tasks: list[str]
+    # Reason per skipped task. Keys match ``skipped_tasks``. Values are one of:
+    # ``"not_approved"``, ``"merge_conflict"``, ``"empty_diff"``.
+    skip_reasons: dict[str, str] = field(default_factory=dict)
 
 
 def _run_git(args: list[str], cwd: Path) -> str:
@@ -70,30 +76,43 @@ def squash_integration(
 
     merged: list[str] = []
     skipped: list[str] = []
+    skip_reasons: dict[str, str] = {}
     messages = commit_message_for or {}
     try:
         for task_id in all_task_ids:
             if task_id not in approved_task_ids:
                 skipped.append(task_id)
+                skip_reasons[task_id] = "not_approved"
+                _LOG.info("merge skip task=%s reason=not_approved run=%s", task_id, run_id)
                 continue
             branch = f"pciv/{run_id}/{task_id}"
             try:
                 _run_git(["merge", "--squash", "--no-commit", branch], cwd=wt_path)
-            except subprocess.CalledProcessError:
+            except subprocess.CalledProcessError as exc:
                 with contextlib.suppress(subprocess.CalledProcessError):
                     _run_git(["merge", "--abort"], cwd=wt_path)
                 skipped.append(task_id)
+                skip_reasons[task_id] = "merge_conflict"
+                _LOG.warning(
+                    "merge skip task=%s reason=merge_conflict run=%s stderr=%s",
+                    task_id,
+                    run_id,
+                    (exc.stderr or "").strip() if hasattr(exc, "stderr") else "",
+                )
                 continue
 
             status = _run_git(["status", "--porcelain"], cwd=wt_path)
             if not status:
                 skipped.append(task_id)
+                skip_reasons[task_id] = "empty_diff"
+                _LOG.info("merge skip task=%s reason=empty_diff run=%s", task_id, run_id)
                 continue
 
             msg = messages.get(task_id, f"pciv({run_id}): squash {task_id}")
             _run_git(["add", "-A"], cwd=wt_path)
             _run_git(["commit", "-m", msg], cwd=wt_path)
             merged.append(task_id)
+            _LOG.info("merge ok task=%s run=%s", task_id, run_id)
     finally:
         try:
             _run_git(["worktree", "remove", "--force", str(wt_path)], cwd=repo)
@@ -105,4 +124,5 @@ def squash_integration(
         integration_branch=integration,
         merged_tasks=merged,
         skipped_tasks=skipped,
+        skip_reasons=skip_reasons,
     )
