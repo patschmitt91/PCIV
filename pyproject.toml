@@ -6,6 +6,16 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "pciv contributors" }]
+keywords = ["agent-framework", "ai", "orchestration", "multi-agent", "azure-openai"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
 
 dependencies = [
     "agent-framework>=1.0.0b1",
@@ -25,6 +35,7 @@ dev = [
     "pre-commit>=3.8.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
+    "twine>=6.1.0",
     "types-pyyaml>=6.0.12",
 ]
 
@@ -33,8 +44,9 @@ pciv = "pciv.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/patschmitt91/PCIV"
-Repository = "https://github.com/patschmitt91/PCIV"
+Source = "https://github.com/patschmitt91/PCIV"
 Issues = "https://github.com/patschmitt91/PCIV/issues"
+Changelog = "https://github.com/patschmitt91/PCIV/blob/master/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -45,6 +57,7 @@ packages = ["src/pciv"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/pciv/state/schema.sql" = "pciv/state/schema.sql"
+"src/pciv/py.typed" = "pciv/py.typed"
 
 [tool.ruff]
 line-length = 100

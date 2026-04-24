@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SECURITY.md` at the repo root: supported-versions table, private
+  reporting channels (GitHub private advisories + maintainer email),
+  and a 90-day coordinated-disclosure window. Linked from the README.
+- Top-level `justfile` with `install`, `lint`, `fmt`, `typecheck`,
+  `test`, `cov`, `build`, and `clean` recipes; all shell out to `uv`.
+  README has a new `Development` section documenting the recipes.
+- `src/pciv/py.typed` marker, force-included in the wheel via
+  `[tool.hatch.build.targets.wheel.force-include]` so downstream type
+  checkers pick up the package as typed.
+- `[project]` classifiers now include `Development Status :: 4 - Beta`,
+  `Operating System :: OS Independent`, and the Python 3.11 / 3.12
+  rows (previously no classifiers were declared).
+- `[project]` gains a `keywords` array
+  (`agent-framework`, `ai`, `orchestration`, `multi-agent`,
+  `azure-openai`).
+- `[project.urls]` now includes `Homepage`, `Source`, `Issues`, and
+  `Changelog` (previously only `Homepage`, `Repository`, `Issues`).
+- `twine>=6.1.0` added to the `dev` extra.
+- CI `build` job on ubuntu-latest runs `uv build` followed by
+  `uv run twine check dist/*` and uploads `dist/` as an artifact.
+- `release.yml` split into `build` (runs `uv build` + `twine check` +
+  uploads `dist/` artifact) and `release` (downloads the artifact and
+  creates the GitHub Release via `softprops/action-gh-release@v2`).
+  The release job `needs: build`, so twine metadata failures block
+  the GitHub Release.
 - `.github/workflows/release.yml` — on tag `v*`, build the wheel with
   `uv build` and upload it as a GitHub Release asset (no PyPI publish).
 - CI `type-check` job runs `uv run mypy --strict src/pciv`
