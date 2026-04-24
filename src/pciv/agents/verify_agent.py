@@ -1,4 +1,4 @@
-"""Verifier. GPT-5.4 via Azure OpenAI. Emits a VerdictReport."""
+"""Verifier. Azure OpenAI (reasoning-class deployment; see plan.yaml). Emits a VerdictReport."""
 
 from __future__ import annotations
 

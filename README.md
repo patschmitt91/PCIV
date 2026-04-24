@@ -6,15 +6,23 @@ All phases run through Azure OpenAI. There is no Anthropic dependency.
 
 ## Phases
 
-1. **Plan** — `gpt-5.4` emits a structured JSON plan.
-2. **Critique** — `gpt-5.4` validates the plan. Must pass before phase 3.
-3. **Implement** — Parallel `gpt-5.3-codex` workers, one per independent
+1. **Plan** — a reasoning-class Azure OpenAI deployment emits a
+   structured JSON plan.
+2. **Critique** — the same reasoning deployment validates the plan.
+   Must pass before phase 3.
+3. **Implement** — Parallel codegen-class workers, one per independent
    subtask, each in its own git worktree. Tool loop: `read_file`,
    `write_file`, `list_dir`, `run_pytest`. Shared SQLite ledger.
-4. **Verify** — `gpt-5.4` reviews diffs plus per-worktree pytest output
-   and returns a verdict in `{ship, iterate, reject}`. On `iterate`, loops
-   back to phase 3 with feedback, re-queueing only the subtasks marked
-   `iterate`. Default iteration cap is 2.
+4. **Verify** — A reasoning-class deployment reviews diffs plus
+   per-worktree pytest output and returns a verdict in
+   `{ship, iterate, reject}`. On `iterate`, loops back to phase 3
+   with feedback, re-queueing only the subtasks marked `iterate`.
+   Default iteration cap is 2.
+
+The deployment names are configured in [plan.yaml](plan.yaml); set
+your real Azure OpenAI deployment names there or via the
+`AZURE_OPENAI_*_DEPLOYMENT` environment variables documented at the
+top of that file.
 
 On a `ship` verdict the operator is prompted; on approval the run
 squash-merges each approved subtask branch onto a fresh

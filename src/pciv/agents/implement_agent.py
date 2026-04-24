@@ -1,4 +1,4 @@
-"""Implementer subagent. gpt-5.3-codex via Azure OpenAI with a tool loop.
+"""Implementer subagent. Azure OpenAI (codegen-class deployment; see plan.yaml) with a tool loop.
 
 One subagent session per subtask. Sandboxed to a git worktree: file
 reads and writes are path-confined; the only shell command allowed is

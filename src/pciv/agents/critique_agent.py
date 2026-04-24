@@ -1,4 +1,4 @@
-"""Critique agent. GPT-5.4 via Azure OpenAI.
+"""Critique agent. Azure OpenAI (reasoning-class deployment; see plan.yaml).
 
 Emits a structured Critique JSON with a bounded repair loop.
 """

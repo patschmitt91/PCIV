@@ -29,6 +29,11 @@ dev = [
 [project.scripts]
 pciv = "pciv.cli:app"
 
+[project.urls]
+Homepage = "https://github.com/patschmitt91/PCIV"
+Repository = "https://github.com/patschmitt91/PCIV"
+Issues = "https://github.com/patschmitt91/PCIV/issues"
+
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"

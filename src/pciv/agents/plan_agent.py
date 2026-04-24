@@ -1,4 +1,4 @@
-"""Plan agent. GPT-5.4 via Azure OpenAI.
+"""Plan agent. Azure OpenAI (reasoning-class deployment; see plan.yaml).
 
 Emits a structured Plan JSON. Retries on malformed output with a bounded
 repair loop that includes the prior raw response and validation error.

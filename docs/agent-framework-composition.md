@@ -15,8 +15,8 @@ The port is motivated and specified in
 flowchart TD
     Start([pciv run task]) --> Preflight{preflight<br/>projected cost<br/>&le; budget?}
     Preflight -- no --> Abort([PreflightBudgetExceeded])
-    Preflight -- yes --> Plan[Plan agent<br/>gpt-5.4]
-    Plan --> Critique[Critique agent<br/>gpt-5.4]
+    Preflight -- yes --> Plan[Plan agent<br/>azure-reasoning]
+    Plan --> Critique[Critique agent<br/>azure-reasoning]
     Critique -- reject --> Fail([run rejected])
     Critique -- ok --> HITL1{{input&#40;&#41;<br/>plan approval}}
     HITL1 -- no --> Fail
@@ -24,7 +24,7 @@ flowchart TD
     Sem --> Imp1[Implement #1<br/>worktree 1]
     Sem --> Imp2[Implement #2<br/>worktree 2]
     Sem --> ImpN[Implement #N<br/>worktree N]
-    Imp1 --> Verify[Verify agent<br/>gpt-5.4]
+    Imp1 --> Verify[Verify agent<br/>azure-reasoning]
     Imp2 --> Verify
     ImpN --> Verify
     Verify -- iterate --> Sem

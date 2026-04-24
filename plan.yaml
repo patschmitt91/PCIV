@@ -1,26 +1,40 @@
 # pciv pipeline configuration. All model ids, retries, timeouts, budgets,
 # and gate behavior live here. No hardcoded model strings in Python.
+#
+# `deployment` values below are PLACEHOLDER Azure OpenAI deployment names.
+# Override them to match your Azure OpenAI resource; the canonical way is
+# via environment variables read by the adapter:
+#
+#   AZURE_OPENAI_ENDPOINT
+#   AZURE_OPENAI_API_KEY
+#   AZURE_OPENAI_PLAN_DEPLOYMENT      -> replaces `azure-reasoning`
+#   AZURE_OPENAI_CRITIC_DEPLOYMENT    -> replaces `azure-reasoning`
+#   AZURE_OPENAI_IMPLEMENT_DEPLOYMENT -> replaces `azure-codegen`
+#   AZURE_OPENAI_VERIFY_DEPLOYMENT    -> replaces `azure-reasoning`
+#
+# See the Azure OpenAI models catalog for the list of model ids that can
+# back a deployment: https://learn.microsoft.com/azure/ai-services/openai/concepts/models
 
 version: 1
 
 models:
   planner:
     provider: azure_openai
-    deployment: gpt-5.4
+    deployment: azure-reasoning
     api_version: "2024-10-21"
     max_tokens: 8192
     timeout_s: 180
     retries: 3
   critic:
     provider: azure_openai
-    deployment: gpt-5.4
+    deployment: azure-reasoning
     api_version: "2024-10-21"
     max_tokens: 4096
     timeout_s: 120
     retries: 2
   implementer:
     provider: azure_openai
-    deployment: gpt-5.3-codex
+    deployment: azure-codegen
     api_version: "2024-10-21"
     max_tokens: 8192
     timeout_s: 900
@@ -29,18 +43,18 @@ models:
     max_concurrency: 3
   verifier:
     provider: azure_openai
-    deployment: gpt-5.4
+    deployment: azure-reasoning
     api_version: "2024-10-21"
     max_tokens: 8192
     timeout_s: 240
     retries: 2
 
 pricing:
-  # USD per 1M tokens. Source: Azure OpenAI public pricing.
-  gpt-5.4:
+  # USD per 1M tokens. Update to match your negotiated Azure OpenAI rates.
+  azure-reasoning:
     input_per_mtok: 2.50
     output_per_mtok: 10.00
-  gpt-5.3-codex:
+  azure-codegen:
     input_per_mtok: 1.25
     output_per_mtok: 5.00
 
