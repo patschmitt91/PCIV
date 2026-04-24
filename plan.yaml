@@ -1,0 +1,80 @@
+# pciv pipeline configuration. All model ids, retries, timeouts, budgets,
+# and gate behavior live here. No hardcoded model strings in Python.
+
+version: 1
+
+models:
+  planner:
+    provider: azure_openai
+    deployment: gpt-5.4
+    api_version: "2024-10-21"
+    max_tokens: 8192
+    timeout_s: 180
+    retries: 3
+  critic:
+    provider: azure_openai
+    deployment: gpt-5.4
+    api_version: "2024-10-21"
+    max_tokens: 4096
+    timeout_s: 120
+    retries: 2
+  implementer:
+    provider: azure_openai
+    deployment: gpt-5.3-codex
+    api_version: "2024-10-21"
+    max_tokens: 8192
+    timeout_s: 900
+    retries: 1
+    max_turns: 40
+    max_concurrency: 3
+  verifier:
+    provider: azure_openai
+    deployment: gpt-5.4
+    api_version: "2024-10-21"
+    max_tokens: 8192
+    timeout_s: 240
+    retries: 2
+
+pricing:
+  # USD per 1M tokens. Source: Azure OpenAI public pricing.
+  gpt-5.4:
+    input_per_mtok: 2.50
+    output_per_mtok: 10.00
+  gpt-5.3-codex:
+    input_per_mtok: 1.25
+    output_per_mtok: 5.00
+
+budget:
+  default_ceiling_usd: 2.00
+  # Rough projection inputs used before any network call.
+  projection:
+    plan_input_tokens: 4000
+    plan_output_tokens: 3000
+    critique_input_tokens: 5000
+    critique_output_tokens: 1500
+    implement_input_tokens_per_subtask: 24000
+    implement_output_tokens_per_subtask: 8000
+    verify_input_tokens: 12000
+    verify_output_tokens: 2000
+    expected_subtasks: 3
+
+iteration:
+  max_rounds: 2
+  max_plan_revisions: 2
+
+gates:
+  approve_plan:
+    enabled: true
+    default: approve
+  approve_merge:
+    enabled: true
+    default: reject
+
+telemetry:
+  service_name: pciv
+  # If unset, exporter falls back to console.
+  app_insights_connection_string_env: APPLICATIONINSIGHTS_CONNECTION_STRING
+
+runtime:
+  state_dir: .pciv
+  sqlite_path: .pciv/ledger.db
