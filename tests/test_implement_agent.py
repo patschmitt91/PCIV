@@ -60,9 +60,7 @@ def test_implement_agent_writes_file_and_completes(
     wt = tmp_path / "wt"
     wt.mkdir()
 
-    final_json = json.dumps(
-        {"status": "complete", "changed_files": ["hello.txt"], "notes": "ok"}
-    )
+    final_json = json.dumps({"status": "complete", "changed_files": ["hello.txt"], "notes": "ok"})
     responses = [
         _response(
             content=None,
@@ -71,9 +69,7 @@ def test_implement_agent_writes_file_and_completes(
         _response(content=final_json),
     ]
     client = _FakeAzureOpenAI(responses)
-    agent = ImplementAgent(
-        cfg.models.implementer, governor, ledger, "run-1", tracer, client=client
-    )
+    agent = ImplementAgent(cfg.models.implementer, governor, ledger, "run-1", tracer, client=client)
     subtask = Subtask(
         id="t1",
         description="write hello",
@@ -108,9 +104,7 @@ def test_implement_agent_rejects_path_escape(
         _response(content=final_json),
     ]
     client = _FakeAzureOpenAI(responses)
-    agent = ImplementAgent(
-        cfg.models.implementer, governor, ledger, "run-2", tracer, client=client
-    )
+    agent = ImplementAgent(cfg.models.implementer, governor, ledger, "run-2", tracer, client=client)
     subtask = Subtask(id="t1", description="d")
     result = agent.run(subtask=subtask, worktree=wt, iteration=0)
     assert result.status == "complete"

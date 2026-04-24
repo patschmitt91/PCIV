@@ -25,9 +25,7 @@ def build_azure_client(model_ref: ModelRef) -> AzureOpenAILike:
     if not api_key:
         raise RuntimeError("AZURE_OPENAI_API_KEY is not set")
     api_version = (
-        model_ref.api_version
-        or os.environ.get("AZURE_OPENAI_API_VERSION")
-        or "2024-10-21"
+        model_ref.api_version or os.environ.get("AZURE_OPENAI_API_VERSION") or "2024-10-21"
     )
     return AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
 

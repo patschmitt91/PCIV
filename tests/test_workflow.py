@@ -119,7 +119,11 @@ async def test_pipeline_happy_path_ships_and_merges(
     real_run = ImplementAgent.run
 
     def run_then_commit(
-        self: ImplementAgent, subtask: Any, worktree: Path, iteration: int, prior_feedback: Any = None
+        self: ImplementAgent,
+        subtask: Any,
+        worktree: Path,
+        iteration: int,
+        prior_feedback: Any = None,
     ) -> Any:
         result = real_run(self, subtask, worktree, iteration, prior_feedback)
         import subprocess

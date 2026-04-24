@@ -20,9 +20,7 @@ def test_worktree_create_and_diff(tmp_path: Path) -> None:
     assert wt.branch == "pciv/r1/t1"
 
     (wt.path / "new.txt").write_text("hello\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "add", "-A"], cwd=str(wt.path), check=True, capture_output=True
-    )
+    subprocess.run(["git", "add", "-A"], cwd=str(wt.path), check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", "add new"],
         cwd=str(wt.path),

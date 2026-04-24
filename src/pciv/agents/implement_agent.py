@@ -116,12 +116,30 @@ _MAX_WRITE_BYTES = 2 * 1024 * 1024  # 2 MB per file
 
 # Pytest args the model is allowed to pass. Anything not matching this set or
 # these prefixes is silently dropped before subprocess invocation.
-_PYTEST_ALLOWED_FLAGS = frozenset({
-    "-v", "--verbose", "-q", "--quiet", "-x", "--exitfirst",
-    "-s", "--capture=no", "--tb=short", "--tb=long", "--tb=no",
-    "--tb=line", "--tb=auto", "-r", "rN", "rE", "rF",
-    "--no-header", "--co", "--collect-only",
-})
+_PYTEST_ALLOWED_FLAGS = frozenset(
+    {
+        "-v",
+        "--verbose",
+        "-q",
+        "--quiet",
+        "-x",
+        "--exitfirst",
+        "-s",
+        "--capture=no",
+        "--tb=short",
+        "--tb=long",
+        "--tb=no",
+        "--tb=line",
+        "--tb=auto",
+        "-r",
+        "rN",
+        "rE",
+        "rF",
+        "--no-header",
+        "--co",
+        "--collect-only",
+    }
+)
 _PYTEST_ALLOWED_PREFIXES = ("-k", "-m", "--tb=", "-r")
 
 
@@ -163,7 +181,7 @@ def _tool_list_dir(worktree: Path, path: str) -> dict[str, Any]:
 
 def _tool_run_pytest(worktree: Path, args: list[str] | None) -> dict[str, Any]:
     safe_args: list[str] = []
-    for arg in (args or []):
+    for arg in args or []:
         if arg in _PYTEST_ALLOWED_FLAGS or arg.startswith(_PYTEST_ALLOWED_PREFIXES):
             safe_args.append(arg)
         # Silently drop anything that could modify paths, load plugins, or

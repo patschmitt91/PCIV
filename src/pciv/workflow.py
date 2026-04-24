@@ -82,9 +82,7 @@ class Pipeline:
 
         self._planner = PlanAgent(cfg.models.planner, governor, ledger, run_id, tracer)
         self._critic = CritiqueAgent(cfg.models.critic, governor, ledger, run_id, tracer)
-        self._implementer = ImplementAgent(
-            cfg.models.implementer, governor, ledger, run_id, tracer
-        )
+        self._implementer = ImplementAgent(cfg.models.implementer, governor, ledger, run_id, tracer)
         self._verifier = VerifyAgent(cfg.models.verifier, governor, ledger, run_id, tracer)
 
     async def run(self, task: str, max_iter: int) -> RunOutcome:
@@ -99,16 +97,12 @@ class Pipeline:
                 message="plan or critique aborted before implementation",
             )
 
-        self._ledger.record_tasks(
-            self._run_id, [s.model_dump() for s in plan.subtasks]
-        )
+        self._ledger.record_tasks(self._run_id, [s.model_dump() for s in plan.subtasks])
 
         base_ref = current_head(self._repo)
         worktrees: dict[str, Worktree] = {}
         for subtask in plan.subtasks:
-            worktrees[subtask.id] = create_worktree(
-                self._repo, self._run_id, subtask.id, base_ref
-            )
+            worktrees[subtask.id] = create_worktree(self._repo, self._run_id, subtask.id, base_ref)
 
         diffs: dict[str, str] = {tid: "" for tid in worktrees}
         tests: dict[str, str] = {tid: "" for tid in worktrees}
@@ -118,9 +112,7 @@ class Pipeline:
         verdict: VerdictReport | None = None
         iteration = 0
         for iteration in range(max_iter + 1):
-            await self._phase_implement(
-                plan, pending_tasks, worktrees, iteration, prior_feedback
-            )
+            await self._phase_implement(plan, pending_tasks, worktrees, iteration, prior_feedback)
             for st in plan.subtasks:
                 wt = worktrees[st.id]
                 diffs[st.id] = diff_against_base(wt)
@@ -214,8 +206,7 @@ class Pipeline:
         approved_ids = [
             s.id
             for s in plan.subtasks
-            if (verdict.per_subtask.get(s.id, verdict.verdict) if verdict else "reject")
-            == "ship"
+            if (verdict.per_subtask.get(s.id, verdict.verdict) if verdict else "reject") == "ship"
         ]
         merge_result = squash_integration(
             repo=self._repo,
@@ -242,9 +233,7 @@ class Pipeline:
             base_ref=base_ref,
         )
 
-    async def _phase_plan_critique(
-        self, task: str
-    ) -> tuple[Plan | None, Critique | None]:
+    async def _phase_plan_critique(self, task: str) -> tuple[Plan | None, Critique | None]:
         feedback: str | None = None
         plan: Plan | None = None
         critique: Critique | None = None

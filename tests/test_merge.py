@@ -14,12 +14,8 @@ from ._gitutil import init_git_repo
 def _commit_file(wt_path: Path, relpath: str, content: str, msg: str) -> None:
     (wt_path / relpath).parent.mkdir(parents=True, exist_ok=True)
     (wt_path / relpath).write_text(content, encoding="utf-8")
-    subprocess.run(
-        ["git", "add", "-A"], cwd=str(wt_path), check=True, capture_output=True
-    )
-    subprocess.run(
-        ["git", "commit", "-m", msg], cwd=str(wt_path), check=True, capture_output=True
-    )
+    subprocess.run(["git", "add", "-A"], cwd=str(wt_path), check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", msg], cwd=str(wt_path), check=True, capture_output=True)
 
 
 def test_squash_integration_merges_approved(tmp_path: Path) -> None:
