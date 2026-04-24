@@ -38,10 +38,28 @@ _VERBOSE_OPT = typer.Option(False, "--verbose", "-v", help="DEBUG-level logs.")
 _QUIET_OPT = typer.Option(False, "--quiet", "-q", help="Only WARNING+ logs.")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from pciv import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+_VERSION_OPT = typer.Option(
+    False,
+    "--version",
+    help="Print the pciv version and exit.",
+    callback=_version_callback,
+    is_eager=True,
+)
+
+
 @app.callback()
 def _root(
     verbose: bool = _VERBOSE_OPT,
     quiet: bool = _QUIET_OPT,
+    version: bool = _VERSION_OPT,
 ) -> None:
     """Configure root logger based on verbosity flags and ``LOG_FORMAT`` env."""
 

@@ -48,8 +48,16 @@ listed under [Azure OpenAI setup](#azure-openai-setup) before `pciv run`.
 
 ## Quickstart
 
+Install dependencies, confirm the version, run the environment check, see
+what a run would look like, then build and run the container.
+
 ```
-$ pciv run "refactor auth module to use JWT" --budget 2.00 --max-iter 2
+$ uv sync
+$ uv run pciv --version
+$ uv run pciv doctor
+$ uv run pciv run --help
+$ docker build -t pciv:0.2.0 .
+$ docker run --rm pciv:0.2.0 doctor
 ```
 
 Expected output shape:
