@@ -68,4 +68,3 @@ def set_meter_provider_for_tests(provider: MeterProvider | None) -> None:
     """
 
     _core.set_meter_provider_for_tests(provider)
-
