@@ -65,10 +65,13 @@ packages = ["src/pciv"]
 
 # Local dev against a sibling agentcore checkout.
 # `uv sync` resolves agentcore from the git pin in [project.dependencies]
-# on a fresh clone (without agentcore alongside). Uncomment this override
-# when iterating on agentcore in-tree before a tag is published.
+# on a fresh clone (without agentcore alongside) and on CI. Uncomment the
+# override below when iterating on agentcore in-tree before a tag is
+# published, and run `uv lock` to refresh the lockfile. Re-comment and
+# re-lock before pushing so CI (which has no sibling checkout) resolves
+# from the git pin.
 [tool.uv.sources]
-agentcore = { path = "../agentcore", editable = true }
+# agentcore = { path = "../agentcore", editable = true }
 
 [tool.ruff]
 line-length = 100
