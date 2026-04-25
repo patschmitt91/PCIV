@@ -5,6 +5,7 @@ dist
 build
 tests
 docs
+.pciv
 *.egg-info
 .mypy_cache
 .ruff_cache
@@ -13,6 +14,7 @@ docs
 .coverage.*
 coverage.xml
 __pycache__
+**/__pycache__
 *.pyc
 *.pyo
 .editorconfig
