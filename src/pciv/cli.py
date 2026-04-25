@@ -106,10 +106,33 @@ def run_cmd(
         raise
 
 
-def _make_gate(auto_approve: bool) -> Callable[[str, dict[str, Any]], Awaitable[str]]:
+def _make_gate(
+    auto_approve: bool, *, run_id: str = "", state_dir: str = ""
+) -> Callable[[str, dict[str, Any]], Awaitable[str]]:
     async def gate(name: str, payload: dict[str, Any]) -> str:
         typer.echo(f"\n=== HITL gate: {name} ===")
-        typer.echo(json.dumps(payload, indent=2)[:4000])
+        full = json.dumps(payload, indent=2)
+        if len(full) > 4000:
+            # Spool the full payload so the operator can review what was
+            # truncated. Without this marker the prompt silently hides the
+            # tail of large plans/critiques. See harden/phase-2 PCIV item #8.
+            spooled_to = ""
+            if state_dir and run_id:
+                spool_dir = Path(state_dir) / "hitl"
+                with contextlib.suppress(OSError):
+                    spool_dir.mkdir(parents=True, exist_ok=True)
+                    spool_path = spool_dir / f"{run_id}-{name}.json"
+                    spool_path.write_text(full, encoding="utf-8")
+                    spooled_to = str(spool_path)
+            typer.echo(full[:4000])
+            tail_msg = (
+                f"\n... [truncated {len(full) - 4000} chars; full payload at {spooled_to}]"
+                if spooled_to
+                else f"\n... [truncated {len(full) - 4000} chars; spool dir unavailable]"
+            )
+            typer.echo(tail_msg)
+        else:
+            typer.echo(full)
         if auto_approve:
             typer.echo("--yes set, auto-approving")
             return "approve"
@@ -157,10 +180,23 @@ async def _run(
             run_id=run_id,
             tracer=tracer,
             repo=Path(repo),
-            gate_cb=_make_gate(auto_approve),
+            gate_cb=_make_gate(auto_approve, run_id=run_id, state_dir=cfg.runtime.state_dir),
         )
-        outcome = await pipeline.run(task=task, max_iter=max_iter)
-        ledger.finalize_run(run_id, status=outcome.status)
+        outcome = None
+        try:
+            outcome = await pipeline.run(task=task, max_iter=max_iter)
+            ledger.finalize_run(run_id, status=outcome.status)
+        except Exception:
+            # Mark the run as crashed in the ledger so an operator can tell
+            # the failure mode from a clean abort. See harden/phase-2 PCIV
+            # item #3.
+            with contextlib.suppress(Exception):
+                ledger.finalize_run(run_id, status="crashed")
+            raise
+        finally:
+            if cleanup and outcome is not None and outcome.worktrees:
+                with contextlib.suppress(Exception):
+                    cleanup_worktrees(Path(repo), outcome.worktrees)
 
         typer.echo(f"\nstatus={outcome.status}")
         typer.echo(f"message={outcome.message}")
@@ -174,7 +210,6 @@ async def _run(
             typer.echo(f"merged_tasks={outcome.merge.merged_tasks}")
             typer.echo(f"skipped_tasks={outcome.merge.skipped_tasks}")
         if cleanup and outcome.worktrees:
-            cleanup_worktrees(Path(repo), outcome.worktrees)
             typer.echo(f"cleaned up {len(outcome.worktrees)} worktrees")
         if outcome.status not in _SUCCESS_STATUSES:
             raise typer.Exit(code=1)

@@ -27,7 +27,17 @@ def build_azure_client(model_ref: ModelRef) -> AzureOpenAILike:
     api_version = (
         model_ref.api_version or os.environ.get("AZURE_OPENAI_API_VERSION") or "2024-10-21"
     )
-    return AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
+    # Honour the per-role timeout/retries from plan.yaml. Without these
+    # values the SDK defaults to 600s and a single retry, which silently
+    # masks slow Azure deployments and inflates wall time. See harden/
+    # phase-2 PCIV item #2.
+    return AzureOpenAI(
+        azure_endpoint=endpoint,
+        api_key=api_key,
+        api_version=api_version,
+        timeout=float(model_ref.timeout_s),
+        max_retries=int(model_ref.retries),
+    )
 
 
 def extract_text(response: Any) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -110,4 +111,20 @@ def load_config(path: str | Path) -> PlanConfig:
         raise FileNotFoundError(f"config not found: {p}")
     with p.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
-    return PlanConfig.model_validate(raw)
+    cfg = PlanConfig.model_validate(raw)
+
+    # Allow operators to override Azure deployment names per role from the
+    # environment without forking plan.yaml. Mirrors the model-id override
+    # pattern Budgeteer's policy.yaml uses. See harden/phase-2 PCIV item #1.
+    _role_env = {
+        "planner": "AZURE_OPENAI_PLANNER_DEPLOYMENT",
+        "critic": "AZURE_OPENAI_CRITIC_DEPLOYMENT",
+        "implementer": "AZURE_OPENAI_IMPLEMENTER_DEPLOYMENT",
+        "verifier": "AZURE_OPENAI_VERIFIER_DEPLOYMENT",
+    }
+    for role, env_name in _role_env.items():
+        override = os.environ.get(env_name)
+        if override:
+            ref = getattr(cfg.models, role)
+            setattr(cfg.models, role, ref.model_copy(update={"deployment": override}))
+    return cfg

@@ -44,3 +44,44 @@ def test_verdict_report_rejects_invalid_per_subtask_verdict() -> None:
 
     with pytest.raises(ValidationError):
         VerdictReport(verdict="ship", per_subtask={"t1": "maybe"})
+
+
+def test_plan_rejects_dependency_cycle() -> None:
+    """Regression: cycle detection at validation time, not at topo-sort time."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="cycle"):
+        Plan(
+            goals=["g"],
+            subtasks=[
+                Subtask(id="a", description="x", dependencies=["b"]),
+                Subtask(id="b", description="y", dependencies=["a"]),
+            ],
+        )
+
+
+def test_plan_rejects_too_many_subtasks() -> None:
+    """Regression: MAX_SUBTASKS bound on planner output."""
+    import pytest
+    from pydantic import ValidationError
+
+    from pciv.types import MAX_SUBTASKS
+
+    too_many = [Subtask(id=f"t{i:03d}", description="x") for i in range(MAX_SUBTASKS + 1)]
+    with pytest.raises(ValidationError, match=f"MAX_SUBTASKS={MAX_SUBTASKS}"):
+        Plan(goals=["g"], subtasks=too_many)
+
+
+def test_plan_rejects_duplicate_subtask_ids() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="duplicate"):
+        Plan(
+            goals=["g"],
+            subtasks=[
+                Subtask(id="a", description="x"),
+                Subtask(id="a", description="y"),
+            ],
+        )
