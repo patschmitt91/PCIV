@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agentcore.scan import DiffScanner, Finding
+
 from .agents import CritiqueAgent, ImplementAgent, PlanAgent, VerifyAgent
 from .agents.implement_agent import ImplementResult
 from .budget import BudgetGovernor
@@ -22,7 +24,7 @@ from .config import PlanConfig
 from .merge import MergeResult, squash_integration
 from .sandbox import SandboxUnavailableError, run_pytest
 from .state import Ledger
-from .types import Critique, Plan, Subtask, VerdictReport
+from .types import Critique, Plan, Subtask, Verdict, VerdictReport
 from .worktree import Worktree, create_worktree, current_head, diff_against_base, remove_worktree
 
 GateCallback = Callable[[str, dict[str, Any]], Awaitable[str]]
@@ -90,6 +92,7 @@ class Pipeline:
             task_trust=cfg.runtime.task_trust,
         )
         self._verifier = VerifyAgent(cfg.models.verifier, governor, ledger, run_id, tracer)
+        self._scanner = DiffScanner()
 
     async def run(self, task: str, max_iter: int) -> RunOutcome:
         plan, critique = await self._phase_plan_critique(task)
@@ -130,6 +133,30 @@ class Pipeline:
                 per_subtask_tests=tests,
                 iteration=iteration,
             )
+            # Fail-closed scanner pass: even if the LLM verifier votes
+            # "ship", any secret-shaped addition in a per-subtask diff
+            # forces the verdict to "reject" with a synthesized reason.
+            # The scanner is deterministic and reuses agentcore's shared
+            # pattern catalogue, so a verifier prompt-injection cannot
+            # talk us out of this. See ADR-0006.
+            scanner_findings = self._scan_diffs_for_secrets(diffs)
+            if scanner_findings:
+                reasons = [
+                    f"diff scanner refused {tid}: {len(fs)} secret pattern(s) "
+                    f"{sorted({f.pattern_name for f in fs})}"
+                    for tid, fs in scanner_findings.items()
+                ]
+                per_subtask: dict[str, Verdict] = {tid: "reject" for tid in scanner_findings}
+                # Preserve any verifier-rejected ids so the override doesn't
+                # narrow the rejection set.
+                for tid, v in verdict.per_subtask.items():
+                    if v == "reject" and tid not in per_subtask:
+                        per_subtask[tid] = "reject"
+                verdict = VerdictReport(
+                    verdict="reject",
+                    reasons=[*verdict.reasons, *reasons],
+                    per_subtask=per_subtask,
+                )
             self._ledger.record_verdict(
                 self._run_id,
                 iteration,
@@ -292,6 +319,22 @@ class Pipeline:
             layer_results = await asyncio.gather(*[_run_one(s) for s in layer])
             results.extend(layer_results)
         return results
+
+    def _scan_diffs_for_secrets(
+        self, diffs: dict[str, str]
+    ) -> dict[str, list[Finding]]:
+        """Return per-subtask findings for any diff that introduces a secret.
+
+        Subtasks with no findings are omitted. Empty dict means clean.
+        """
+        out: dict[str, list[Finding]] = {}
+        for tid, diff in diffs.items():
+            if not diff:
+                continue
+            findings = self._scanner.scan_diff(diff)
+            if findings:
+                out[tid] = findings
+        return out
 
 
 def cleanup_worktrees(repo: Path, worktrees: dict[str, Worktree]) -> None:

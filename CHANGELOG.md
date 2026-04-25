@@ -6,14 +6,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Hardening (per HARDENING_PROMPT.md)
+### Removed
 
-- **Phase 0** — infra refresh (uv 0.4.30 pin, healthcheck fix, dependabot, codeql, lychee).
-- **Phase 1** — pytest sandbox; model-authored conftest no longer executes on the host.
-- **Phase 2** — env-driven deployment overrides, Azure SDK timeout/retries honoured, plan validator (cycle/MAX/dup), implementer file-scope enforcement, CLI try/finally + HITL truncation+spool.
-- **Phase 3** — schema v2 with `ON DELETE CASCADE`, WAL/synchronous/busy_timeout/foreign_keys/user_version PRAGMAs, static `fetch_all` query map, redaction of ledger writes (`finish_invocation` errors, `record_verdict` reasons), env-secret cache.
-- **Phase 4** — `pciv.redaction` is now a re-export of the new shared `agentcore.redaction`. Adds `agentcore>=0.1.0,<0.2`. ADR 0005.
-- **Phase 5** — release pipeline gains CycloneDX SBOM, sigstore signing, trivy image scan; CI gains trivy fs + SBOM jobs; release `concurrency` guard added.
+- `CODE_OF_CONDUCT.md`. The project's contribution surface is
+  governed by `CONTRIBUTING.md` (PR checklist) and `SECURITY.md`
+  (vulnerability reporting). No replacement.
+
+### Added
+
+- Diff-time secret-leak detection wired through both Implement and
+  Verify, backed by the new `agentcore.scan.DiffScanner`. ADR 0006.
+  - `_tool_write_file` now scans content before writing and refuses
+    the write when any pattern in `agentcore.redaction.NAMED_PATTERNS`
+    matches; the implement agent receives a tool error and can retry
+    with redacted content.
+  - `Pipeline.run` runs the scanner over each per-subtask diff after
+    the verifier returns. Any finding **forces** the verdict to
+    `reject` with a synthesized reason (`"diff scanner refused
+    <task>: N secret pattern(s) [...]"`), regardless of whether the
+    LLM verifier voted `ship`. Pre-existing rejections are preserved.
+- `tests/test_secret_scanner_integration.py` covers both gates:
+  pre-write rejection of sk-/JWT/clean content, custom-scanner
+  injection, and the post-implement override that downgrades a
+  ship-voted verdict to `reject` when a secret-bearing file is
+  written outside the `_tool_write_file` path.
+- `tests/test_error_paths.py` adds four error-path tests to close the
+  gap where v0.1's only workflow test was the happy path:
+  - Plan agent surfaces a `RuntimeError` (not a partial `Plan`) when
+    every retry returns malformed JSON; ledger captures every
+    invocation as `ok` or `error`.
+  - Pipeline status is `merge_rejected` and no integration branch is
+    created when the operator declines the merge HITL gate after a
+    ship verdict.
+  - `BudgetExceededError` propagates from a mid-run charge; the
+    failed plan invocation is recorded with `status="error"` rather
+    than swallowed.
+  - `squash_integration` cleans up the `_integration` worktree
+    directory and the corresponding `git worktree list` entry even
+    when the second of two approved subtasks conflicts.
+
+### Changed
+
+- `agentcore` pin bumped from `git+...@v0.2.0` to `git+...@v0.3.0`.
+  The new release ships `agentcore.scan` and a corrected README; see
+  agentcore CHANGELOG for the full diff.
+- `[tool.uv.sources]` now declares an editable override for sibling
+  `agentcore` checkouts so local dev works before the v0.3.0 tag is
+  pushed. `uv sync` on a fresh clone still resolves from the git pin.
 
 ## [0.2.0] — 2026-04-24
 

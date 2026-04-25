@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from agentcore.scan import DiffScanner
 from pydantic import BaseModel, Field, ValidationError
 
 from ..budget import BudgetGovernor
@@ -164,6 +165,7 @@ def _tool_write_file(
     content: str,
     *,
     allowed_files: list[str] | None = None,
+    scanner: DiffScanner | None = None,
 ) -> dict[str, Any]:
     p = _resolve_safe(worktree, path)
     encoded = content.encode("utf-8")
@@ -187,6 +189,30 @@ def _tool_write_file(
                     f"allowed_files={sorted(normalized_allowed)}"
                 ),
             }
+    # Diff-time secret scan: refuse the write when the about-to-land
+    # content matches any pattern in agentcore's shared catalogue. The
+    # scanner reuses agentcore.redaction's NAMED_PATTERNS so additions
+    # there immediately tighten the write gate. See ADR-0006.
+    active_scanner = scanner or DiffScanner()
+    findings = active_scanner.scan_text(content)
+    if findings:
+        names = sorted({f.pattern_name for f in findings})
+        excerpts = [
+            {
+                "line": f.line_number,
+                "pattern": f.pattern_name,
+                "excerpt": f.redacted_excerpt,
+            }
+            for f in findings
+        ]
+        return {
+            "ok": False,
+            "error": (
+                f"refused to write {path!r}: content matches {len(findings)} "
+                f"secret pattern(s) {names}. Remove the secret and retry."
+            ),
+            "secret_findings": excerpts,
+        }
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return {"ok": True, "bytes": len(encoded)}
@@ -244,13 +270,18 @@ def _dispatch(
     *,
     trust: str = "untrusted",
     allowed_files: list[str] | None = None,
+    scanner: DiffScanner | None = None,
 ) -> dict[str, Any]:
     try:
         if name == "read_file":
             return _tool_read_file(worktree, args["path"])
         if name == "write_file":
             return _tool_write_file(
-                worktree, args["path"], args["content"], allowed_files=allowed_files
+                worktree,
+                args["path"],
+                args["content"],
+                allowed_files=allowed_files,
+                scanner=scanner,
             )
         if name == "list_dir":
             return _tool_list_dir(worktree, args["path"])
@@ -287,6 +318,7 @@ class ImplementAgent:
         self._tracer = tracer
         self._client = client or build_azure_client(model_ref)
         self._task_trust = task_trust
+        self._scanner = DiffScanner()
 
     def run(
         self,
@@ -378,6 +410,7 @@ class ImplementAgent:
                                     args,
                                     trust=self._task_trust,
                                     allowed_files=list(subtask.files),
+                                    scanner=self._scanner,
                                 )
                             messages.append(
                                 {
