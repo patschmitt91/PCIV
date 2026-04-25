@@ -19,6 +19,7 @@ classifiers = [
 
 dependencies = [
     "agent-framework>=1.0.0b1",
+    "agentcore>=0.1.0,<0.2",
     "openai>=1.54.0",
     "pydantic>=2.9.0",
     "typer>=0.12.0",
