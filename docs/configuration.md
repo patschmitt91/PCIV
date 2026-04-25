@@ -47,6 +47,8 @@ negotiated rates; no default is safe for billing.
 | Key                                            | Meaning                             |
 |------------------------------------------------|-------------------------------------|
 | `default_ceiling_usd`                          | CLI `--budget` default.             |
+| `monthly_cap_usd`                              | Optional. Cross-run rolling-window USD cap (ADR 0007). When set, every `pciv run` consults a SQLite-backed `agentcore.budget.PersistentBudgetLedger` mounted on `runtime.sqlite_path` and refuses to start a run whose projected cost wouldn't fit in the remaining window. `null` / omitted disables the check; per-run `--budget` still applies. |
+| `window`                                       | `monthly` (UTC `YYYY-MM`) or `daily` (UTC `YYYY-MM-DD`). Default `monthly`. Ignored when `monthly_cap_usd` is unset. |
 | `projection.plan_input_tokens`                 | Preflight input-token estimate.     |
 | `projection.plan_output_tokens`                | Preflight output-token estimate.    |
 | `projection.critique_input_tokens`             | …                                   |
@@ -57,8 +59,12 @@ negotiated rates; no default is safe for billing.
 | `projection.verify_output_tokens`              | …                                   |
 | `projection.expected_subtasks`                 | Preflight fan-out estimate.         |
 
-Preflight sums these against `pricing` and aborts before any network
-call if the result exceeds the ceiling.
+Preflight sums the projection block against `pricing` and aborts before
+any network call if the result exceeds the per-run ceiling. When the
+cross-run cap is active, the same projection is also compared against the
+rolling window's remaining allowance; either check can reject a run.
+Use `pciv run --ignore-cross-run-cap` to bypass the cross-run check (the
+spend is still recorded with `forced=1` for audit).
 
 ## `iteration`
 

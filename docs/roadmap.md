@@ -14,7 +14,26 @@ Dated, best-effort milestones. Dates slip; scope is load-bearing.
 - Repo hygiene: CI matrix (Ubuntu + Windows, Py3.11 / 3.12), CodeQL,
   Dependabot, pre-commit, Code of Conduct.
 
-## v0.2.0 — target Q3 2026
+## v0.2.0 — 2026-04-25 (shipped)
+
+**Theme: secret-leak ratchet + cross-run budget enforcement (the two
+credibility-damaging gaps in v0.1).**
+
+- Diff-time secret-leak detection wired through Implement
+  (`_tool_write_file` refuses writes) and Verify (`Pipeline.run`
+  forces verdict to `reject` on any post-implement secret finding),
+  backed by `agentcore.scan.DiffScanner`. ADR 0006.
+- Cross-run rolling-window budget cap via
+  `agentcore.budget.PersistentBudgetLedger` mounted on
+  `runtime.sqlite_path`. New `[budget].monthly_cap_usd` + `window`
+  config; `--ignore-cross-run-cap` emergency flag with `forced=1`
+  audit row. ADR 0007.
+- Four error-path tests covering plan-malformed-JSON, declined
+  ship-gate, mid-run `BudgetExceededError`, and conflicting second
+  approved subtask cleanup.
+- agentcore pin bumped v0.2.0 → v0.3.0 → v0.4.0.
+
+## v0.3.0 — target Q3 2026
 
 **Theme: ADR-0001 port + non-interactive operation.**
 
@@ -29,17 +48,17 @@ Dated, best-effort milestones. Dates slip; scope is load-bearing.
   against a sandboxed Azure deployment and reports cost, latency, and
   verdict per task.
 
-## v0.3.0 — target Q1 2027
+## v0.4.0 — target Q1 2027
 
-**Theme: production readiness.**
+**Theme: production observability + pluggability.**
 
 - First-class Application Insights workbook mapping ledger rows to
   span attributes.
-- Secret-leak detection in diff generation; refuse to write or log
-  content that matches configured patterns.
-- Cross-run budget enforcement (today the ceiling is per run).
 - Pluggable verifier tool suite (today the Implement agent is the only
   phase with tools; Verify is read-only).
+- Multi-host cross-run cap (today the SQLite-backed ledger only
+  shares state across processes on a single filesystem; tracked as a
+  follow-up in ADR 0007).
 
 ## Out of scope
 
