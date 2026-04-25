@@ -13,7 +13,7 @@ from typing import Any
 
 from opentelemetry import trace
 
-from pciv.redaction import RedactionFilter, redact
+from pciv.redaction import RedactionFilter, redact, refresh_env_cache
 
 _STANDARD_LOGRECORD_FIELDS = frozenset(
     {
@@ -101,6 +101,10 @@ def configure_logging(
     force: bool = False,
 ) -> None:
     """Install a stderr handler with JSON or text formatter plus redaction."""
+
+    # Snapshot env-secrets before the first record is emitted so values set
+    # immediately before configure_logging() is called are still scrubbed.
+    refresh_env_cache()
 
     global _logging_configured
     root = logging.getLogger()

@@ -27,7 +27,14 @@ def governor(cfg: PlanConfig) -> BudgetGovernor:
 @pytest.fixture
 def ledger(tmp_path: Path) -> Ledger:
     db = tmp_path / "ledger.db"
-    return Ledger(db)
+    inst = Ledger(db)
+    # Pre-seed parent run rows so child-table inserts (agent_invocations,
+    # cost_events, verdicts) satisfy the Phase-3 ON DELETE CASCADE FKs.
+    # Tests instantiate agents with arbitrary literal run_ids; this saves
+    # them from having to call record_run themselves.
+    for rid in ("run-1", "run-2", "runX"):
+        inst.record_run(rid, task="test", budget_usd=1.0, max_iter=1)
+    return inst
 
 
 @pytest.fixture

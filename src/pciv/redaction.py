@@ -42,8 +42,16 @@ _PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b[a-fA-F0-9]{40,}\b"),
 )
 
+# Cached snapshot of secret-bearing env-var values. Populated lazily and
+# refreshed explicitly by ``refresh_env_cache``. The previous implementation
+# scanned ``os.environ`` on every call to ``redact``; with ledger writes
+# now flowing through redaction, that scan was on the hot path. See
+# harden/phase-3 #3B.
+_ENV_SECRET_CACHE: tuple[str, ...] = ()
+_ENV_SECRET_CACHE_SIZE: int = -1
 
-def _iter_env_secret_values() -> tuple[str, ...]:
+
+def _scan_env_secret_values() -> tuple[str, ...]:
     out: list[str] = []
     for name, value in os.environ.items():
         if not value:
@@ -53,6 +61,26 @@ def _iter_env_secret_values() -> tuple[str, ...]:
             out.append(value)
     out.sort(key=len, reverse=True)
     return tuple(out)
+
+
+def refresh_env_cache() -> None:
+    """Re-snapshot secret-bearing env vars. Call after env mutation.
+
+    ``configure_logging`` invokes this so freshly-set credentials become
+    redactable before the first log line is emitted.
+    """
+    global _ENV_SECRET_CACHE, _ENV_SECRET_CACHE_SIZE
+    _ENV_SECRET_CACHE = _scan_env_secret_values()
+    _ENV_SECRET_CACHE_SIZE = len(os.environ)
+
+
+def _iter_env_secret_values() -> tuple[str, ...]:
+    # Cheap sentinel: refresh when env size changes. Avoids a full rescan
+    # while still picking up new credentials set after first redact().
+    global _ENV_SECRET_CACHE_SIZE
+    if len(os.environ) != _ENV_SECRET_CACHE_SIZE:
+        refresh_env_cache()
+    return _ENV_SECRET_CACHE
 
 
 def redact(text: str) -> str:

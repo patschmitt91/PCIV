@@ -12,6 +12,22 @@ from typing import Any
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
+# Static SELECT-* query whitelist for ``fetch_all``. Eliminates dynamic SQL
+# entirely so SAST scanners cannot flag the call site. See harden/phase-3 #3A.3.
+_FETCH_ALL_QUERIES: dict[str, str] = {
+    "runs": "SELECT * FROM runs",
+    "tasks": "SELECT * FROM tasks",
+    "iterations": "SELECT * FROM iterations",
+    "agent_invocations": "SELECT * FROM agent_invocations",
+    "cost_events": "SELECT * FROM cost_events",
+    "verdicts": "SELECT * FROM verdicts",
+    "artifacts": "SELECT * FROM artifacts",
+}
+
+# Bumped when schema.sql changes incompatibly. SQLite stores this via
+# PRAGMA user_version so external tools can detect drift.
+_SCHEMA_VERSION = 2
+
 
 def _utcnow() -> str:
     return datetime.now(UTC).isoformat()
@@ -23,7 +39,14 @@ class Ledger:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
+        # Concurrency + durability tuning. Run BEFORE schema init so any
+        # CREATE TABLE statements pick up the WAL journal mode. See
+        # harden/phase-3 #3A.2.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
         self._lock = threading.Lock()
         self._init_schema()
 
@@ -89,6 +112,11 @@ class Ledger:
         status: str = "ok",
         error: str | None = None,
     ) -> None:
+        from pciv.redaction import redact
+
+        # Errors can include raw model output / stack frames with secrets.
+        # See harden/phase-3 #3B.
+        safe_error = redact(error) if error else error
         with self._lock, self._conn:
             self._conn.execute(
                 "UPDATE agent_invocations SET "
@@ -101,7 +129,7 @@ class Ledger:
                     cost_usd,
                     _utcnow(),
                     status,
-                    error,
+                    safe_error,
                     invocation_id,
                 ),
             )
@@ -154,6 +182,10 @@ class Ledger:
         reasons: list[str],
         per_subtask: Mapping[str, str],
     ) -> None:
+        from pciv.redaction import redact
+
+        # Verdict reasons may quote raw model output. See harden/phase-3 #3B.
+        safe_reasons = [redact(r) for r in reasons]
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT OR REPLACE INTO verdicts "
@@ -163,24 +195,18 @@ class Ledger:
                     run_id,
                     iteration,
                     verdict,
-                    json.dumps(reasons),
+                    json.dumps(safe_reasons),
                     json.dumps(dict(per_subtask)),
                     _utcnow(),
                 ),
             )
 
     def fetch_all(self, table: str) -> list[dict[str, Any]]:
-        allowed = {
-            "runs",
-            "tasks",
-            "iterations",
-            "agent_invocations",
-            "cost_events",
-            "verdicts",
-            "artifacts",
-        }
-        if table not in allowed:
+        # Static query map removes any chance of SQL injection via the
+        # ``table`` argument and silences SAST flags on dynamic SQL.
+        query = _FETCH_ALL_QUERIES.get(table)
+        if query is None:
             raise ValueError(f"unknown table: {table}")
         with self._lock:
-            rows = self._conn.execute(f"SELECT * FROM {table}").fetchall()
+            rows = self._conn.execute(query).fetchall()
         return [dict(r) for r in rows]

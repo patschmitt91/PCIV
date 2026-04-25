@@ -197,3 +197,41 @@ def test_multiple_secret_shapes_never_leak(tmp_path: Path, monkeypatch: pytest.M
             assert not _span_contains(span, value), (
                 f"secret leaked into span {span.name}: {value!r}"
             )
+
+
+def test_finish_invocation_redacts_error(tmp_path, monkeypatch) -> None:
+    """Phase 3B: ledger writes scrub secrets at the boundary."""
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "sk-leak-finish-abcdefghij1234567")
+    from pciv.redaction import refresh_env_cache
+    refresh_env_cache()
+
+    led = Ledger(tmp_path / "leak.db")
+    led.record_run("rL", task="t", budget_usd=1.0, max_iter=1)
+    inv = led.start_invocation("rL", 1, "plan", "planner", "gpt-4o")
+    led.finish_invocation(
+        inv, 0, 0, 0.0, status="error",
+        error="boom: sk-leak-finish-abcdefghij1234567 trailing"
+    )
+    rows = led.fetch_all("agent_invocations")
+    assert rows
+    assert "sk-leak-finish" not in rows[0]["error"]
+    assert "REDACTED" in rows[0]["error"]
+
+
+def test_record_verdict_redacts_reasons(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "sk-leak-verdict-abcdefghij1234567")
+    from pciv.redaction import refresh_env_cache
+    refresh_env_cache()
+
+    led = Ledger(tmp_path / "v.db")
+    led.record_run("rV", task="t", budget_usd=1.0, max_iter=1)
+    led.record_verdict(
+        "rV", 1, "fail",
+        ["bad: sk-leak-verdict-abcdefghij1234567 here"],
+        {"t1": "fail"},
+    )
+    rows = led.fetch_all("verdicts")
+    import json as _json
+    reasons_blob = rows[0]["reasons"]
+    assert "sk-leak-verdict" not in reasons_blob
+    assert "REDACTED" in _json.loads(reasons_blob)[0]
