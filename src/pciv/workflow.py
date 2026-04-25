@@ -320,9 +320,7 @@ class Pipeline:
             results.extend(layer_results)
         return results
 
-    def _scan_diffs_for_secrets(
-        self, diffs: dict[str, str]
-    ) -> dict[str, list[Finding]]:
+    def _scan_diffs_for_secrets(self, diffs: dict[str, str]) -> dict[str, list[Finding]]:
         """Return per-subtask findings for any diff that introduces a secret.
 
         Subtasks with no findings are omitted. Empty dict means clean.

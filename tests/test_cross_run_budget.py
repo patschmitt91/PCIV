@@ -49,9 +49,7 @@ _MONTHLY_CAP_USD = 1.6e-4
 _PER_RUN_BUDGET_USD = 0.01
 
 
-def _write_plan_with_cross_run_cap(
-    path: Path, state_dir: Path, monthly_cap_usd: float
-) -> None:
+def _write_plan_with_cross_run_cap(path: Path, state_dir: Path, monthly_cap_usd: float) -> None:
     """Write the e2e fixture plan.yaml with a cross-run cap and bumped
     pricing so cross-run / per-run cap interactions are measurable."""
 
@@ -80,8 +78,7 @@ def _read_budget_window_rows(db_path: Path) -> list[tuple[float, int, str | None
         return [
             (float(r[0]), int(r[1]), r[2])
             for r in conn.execute(
-                "SELECT amount_usd, forced, note FROM budget_window "
-                "ORDER BY rowid"
+                "SELECT amount_usd, forced, note FROM budget_window ORDER BY rowid"
             ).fetchall()
         ]
     finally:
@@ -175,9 +172,7 @@ def test_ignore_cross_run_cap_overrides_rejection_and_marks_row_forced(
 
     db_path = state_dir / "ledger.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with PersistentBudgetLedger(
-        db_path, cap_usd=_MONTHLY_CAP_USD, window="monthly"
-    ) as seed:
+    with PersistentBudgetLedger(db_path, cap_usd=_MONTHLY_CAP_USD, window="monthly") as seed:
         seed.charge(_MONTHLY_CAP_USD, note="prior-run-seed")
 
     _install_fake_agents(monkeypatch)
@@ -246,8 +241,7 @@ def test_cross_run_cap_disabled_when_monthly_cap_unset(
     conn = sqlite3.connect(str(db_path))
     try:
         cur = conn.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name='budget_window'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='budget_window'"
         )
         assert cur.fetchone() is None
     finally:

@@ -107,9 +107,7 @@ def run_cmd(
     """Execute the pciv workflow end-to-end."""
     runs_total().add(1)
     try:
-        asyncio.run(
-            _run(task, budget, max_iter, config, repo, yes, cleanup, ignore_cross_run_cap)
-        )
+        asyncio.run(_run(task, budget, max_iter, config, repo, yes, cleanup, ignore_cross_run_cap))
     except BudgetExceededError as e:
         runs_failed_total().add(1)
         typer.echo(f"budget: {e}", err=True)
@@ -296,9 +294,7 @@ async def _run(
                             # Surfacing a post-hoc over-cap as a hard error
                             # would mask the actual run outcome. Operators
                             # see the breach via the next run's preflight.
-                            cross_run_ledger.record_spend(
-                                actual_spend, note=f"run_id={run_id}"
-                            )
+                            cross_run_ledger.record_spend(actual_spend, note=f"run_id={run_id}")
                 finally:
                     cross_run_ledger.close()
 

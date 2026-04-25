@@ -110,9 +110,7 @@ def test_plan_agent_raises_after_retry_exhaustion(
     bad_payloads = ["not json"] * attempts
     client = _FakeClient([_completion(p) for p in bad_payloads])
 
-    agent = PlanAgent(
-        cfg.models.planner, governor, ledger, "run-1", tracer, client=client
-    )
+    agent = PlanAgent(cfg.models.planner, governor, ledger, "run-1", tracer, client=client)
     with pytest.raises(RuntimeError) as ei:
         agent.run(task="anything", repo_path=".")
     assert "plan_agent" in str(ei.value)
@@ -153,9 +151,7 @@ async def test_pipeline_merge_gate_rejection_aborts_cleanly(
     verify_client = _FakeClient(
         [_completion(json.dumps({"verdict": "ship", "reasons": [], "per_subtask": {"t1": "ship"}}))]
     )
-    impl_complete = json.dumps(
-        {"status": "complete", "changed_files": ["t1.txt"], "notes": "done"}
-    )
+    impl_complete = json.dumps({"status": "complete", "changed_files": ["t1.txt"], "notes": "done"})
     implement_client = _FakeClient([_completion(impl_complete)])
 
     real_run = ImplementAgent.run
@@ -179,9 +175,7 @@ async def test_pipeline_merge_gate_rejection_aborts_cleanly(
         return result
 
     monkeypatch.setattr(ImplementAgent, "run", run_then_commit)
-    _patch_agent_clients(
-        monkeypatch, plan_client, critique_client, implement_client, verify_client
-    )
+    _patch_agent_clients(monkeypatch, plan_client, critique_client, implement_client, verify_client)
 
     decisions: list[str] = []
 
@@ -251,9 +245,7 @@ async def test_pipeline_budget_exhaustion_mid_run_surfaces_exception(
         [_completion(json.dumps({"status": "complete", "changed_files": [], "notes": ""}))]
     )
 
-    _patch_agent_clients(
-        monkeypatch, plan_client, critique_client, implement_client, verify_client
-    )
+    _patch_agent_clients(monkeypatch, plan_client, critique_client, implement_client, verify_client)
 
     async def gate(_name: str, _payload: dict[str, Any]) -> str:
         return "approve"

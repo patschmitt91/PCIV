@@ -50,11 +50,7 @@ def test_write_file_refuses_sk_key(tmp_path: Path) -> None:
 
 
 def test_write_file_refuses_jwt(tmp_path: Path) -> None:
-    jwt = (
-        "eyJhbGciOiJIUzI1NiJ9"
-        ".eyJzdWIiOiJ4In0"
-        ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-    )
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
     res = _tool_write_file(tmp_path, "config.py", f"TOKEN = '{jwt}'\n")
     assert res["ok"] is False
     assert "jwt" in res["error"].lower()
