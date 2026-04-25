@@ -61,4 +61,3 @@ This boundary does **not** protect against:
   modified by the implement loop).
 * Compromise of the container runtime itself (gVisor / Kata are out of
   scope; see ``docs/decisions/0004-untrusted-task-sandbox.md``).
-

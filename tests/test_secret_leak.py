@@ -194,9 +194,9 @@ def test_multiple_secret_shapes_never_leak(tmp_path: Path, monkeypatch: pytest.M
     assert spans, "expected at least one span"
     for span in spans:
         for value in SECRETS.values():
-            assert not _span_contains(span, value), (
-                f"secret leaked into span {span.name}: {value!r}"
-            )
+            assert not _span_contains(
+                span, value
+            ), f"secret leaked into span {span.name}: {value!r}"
 
 
 def test_finish_invocation_redacts_error(tmp_path, monkeypatch) -> None:
