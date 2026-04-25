@@ -8,8 +8,6 @@ reads and writes are path-confined; the only shell command allowed is
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +16,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..budget import BudgetGovernor
 from ..config import ModelRef
+from ..sandbox import SandboxUnavailableError
+from ..sandbox import run_pytest as sandbox_run_pytest
 from ..state import Ledger
 from ..telemetry import agent_span
 from ..types import Subtask
@@ -179,37 +179,44 @@ def _tool_list_dir(worktree: Path, path: str) -> dict[str, Any]:
     return {"ok": True, "entries": entries}
 
 
-def _tool_run_pytest(worktree: Path, args: list[str] | None) -> dict[str, Any]:
+def _tool_run_pytest(
+    worktree: Path,
+    args: list[str] | None,
+    *,
+    trust: str = "untrusted",
+) -> dict[str, Any]:
     safe_args: list[str] = []
     for arg in args or []:
         if arg in _PYTEST_ALLOWED_FLAGS or arg.startswith(_PYTEST_ALLOWED_PREFIXES):
             safe_args.append(arg)
         # Silently drop anything that could modify paths, load plugins, or
         # exfiltrate data (e.g. --rootdir, -p, --import-mode, --pyargs).
-    cmd = [sys.executable, "-m", "pytest", "-q", *safe_args]
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(worktree),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
+        result = sandbox_run_pytest(
+            worktree,
+            trust=trust,
+            extra_args=safe_args,
+            timeout_s=300,  # type: ignore[arg-type]
         )
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "pytest timed out"}
-    # Truncate noisy output for context efficiency.
-    stdout = result.stdout[-8000:]
-    stderr = result.stderr[-4000:]
+    except SandboxUnavailableError as e:
+        return {"ok": False, "error": f"sandbox unavailable: {e}"}
     return {
         "ok": result.returncode == 0,
         "returncode": result.returncode,
-        "stdout": stdout,
-        "stderr": stderr,
+        "stdout": result.stdout[-8000:],
+        "stderr": result.stderr[-4000:],
+        "sandboxed": result.sandboxed,
+        "runtime": result.runtime,
     }
 
 
-def _dispatch(worktree: Path, name: str, args: dict[str, Any]) -> dict[str, Any]:
+def _dispatch(
+    worktree: Path,
+    name: str,
+    args: dict[str, Any],
+    *,
+    trust: str = "untrusted",
+) -> dict[str, Any]:
     try:
         if name == "read_file":
             return _tool_read_file(worktree, args["path"])
@@ -218,7 +225,7 @@ def _dispatch(worktree: Path, name: str, args: dict[str, Any]) -> dict[str, Any]
         if name == "list_dir":
             return _tool_list_dir(worktree, args["path"])
         if name == "run_pytest":
-            return _tool_run_pytest(worktree, args.get("args"))
+            return _tool_run_pytest(worktree, args.get("args"), trust=trust)
         return {"ok": False, "error": f"unknown tool {name}"}
     except PathEscapeError as e:
         return {"ok": False, "error": str(e)}
@@ -235,6 +242,7 @@ class ImplementAgent:
         run_id: str,
         tracer: Any,
         client: AzureOpenAILike | None = None,
+        task_trust: str = "untrusted",
     ) -> None:
         if model_ref.provider != "azure_openai":
             raise ValueError(
@@ -248,6 +256,7 @@ class ImplementAgent:
         self._run_id = run_id
         self._tracer = tracer
         self._client = client or build_azure_client(model_ref)
+        self._task_trust = task_trust
 
     def run(
         self,
@@ -333,7 +342,12 @@ class ImplementAgent:
                                     "error": f"bad JSON args: {e}",
                                 }
                             else:
-                                result = _dispatch(worktree, tc.function.name, args)
+                                result = _dispatch(
+                                    worktree,
+                                    tc.function.name,
+                                    args,
+                                    trust=self._task_trust,
+                                )
                             messages.append(
                                 {
                                     "role": "tool",

@@ -76,6 +76,12 @@ class Telemetry(BaseModel):
 class Runtime(BaseModel):
     state_dir: str = ".pciv"
     sqlite_path: str = ".pciv/ledger.db"
+    # Sandbox boundary for model-authored code executed via pytest. Default
+    # is ``untrusted`` (secure by default); flip to ``trusted`` only when the
+    # task content is fully internal and you accept host-level execution of
+    # any conftest.py / pytest_plugins the implement agent may produce.
+    # See docs/decisions/0004-untrusted-task-sandbox.md.
+    task_trust: Literal["trusted", "untrusted"] = "untrusted"
 
 
 class Models(BaseModel):

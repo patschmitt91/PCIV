@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -265,6 +266,21 @@ def doctor_cmd(config: str = _DOCTOR_CONFIG_OPT) -> None:
         else:
             env_report[name] = REDACTED
     results.append(_check("env", True, json.dumps(env_report)))
+
+    # Sandbox runtime probe. ``task_trust=untrusted`` is the secure default and
+    # requires Docker or Podman; surface availability without forcing a hard
+    # failure when running locally on a workstation without containers.
+    from .sandbox import detect_runtime
+
+    runtime = detect_runtime()
+    trust_default = "untrusted"
+    with contextlib.suppress(Exception):
+        trust_default = load_config(config).runtime.task_trust
+    sandbox_ok = runtime is not None or trust_default == "trusted"
+    sandbox_detail = f"runtime={runtime or 'none'} task_trust={trust_default}" + (
+        "" if sandbox_ok else " WARNING: install docker/podman or set task_trust=trusted"
+    )
+    results.append(_check("sandbox", sandbox_ok, sandbox_detail))
 
     hard = {"python", "uv", "git", "state_dir_writable"}
     all_ok = all(r["ok"] for r in results if r["check"] in hard)
