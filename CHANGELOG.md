@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Hardening (per HARDENING_PROMPT.md)
+
+- **Phase 0** — infra refresh (uv 0.4.30 pin, healthcheck fix, dependabot, codeql, lychee).
+- **Phase 1** — pytest sandbox; model-authored conftest no longer executes on the host.
+- **Phase 2** — env-driven deployment overrides, Azure SDK timeout/retries honoured, plan validator (cycle/MAX/dup), implementer file-scope enforcement, CLI try/finally + HITL truncation+spool.
+- **Phase 3** — schema v2 with `ON DELETE CASCADE`, WAL/synchronous/busy_timeout/foreign_keys/user_version PRAGMAs, static `fetch_all` query map, redaction of ledger writes (`finish_invocation` errors, `record_verdict` reasons), env-secret cache.
+- **Phase 4** — `pciv.redaction` is now a re-export of the new shared `agentcore.redaction`. Adds `agentcore>=0.1.0,<0.2`. ADR 0005.
+- **Phase 5** — release pipeline gains CycloneDX SBOM, sigstore signing, trivy image scan; CI gains trivy fs + SBOM jobs; release `concurrency` guard added.
+
 ## [0.2.0] — 2026-04-24
 
 ### Added
