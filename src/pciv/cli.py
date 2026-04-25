@@ -11,6 +11,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -23,9 +24,12 @@ from .config import load_config
 from .state import Ledger
 from .telemetry import (
     configure_logging,
+    cost_usd_per_run,
+    latency_seconds_per_run,
     runs_failed_total,
     runs_total,
     setup_tracing,
+    tokens_per_run,
 )
 from .workflow import Pipeline, cleanup_worktrees
 
@@ -171,6 +175,7 @@ async def _run(
     projected = governor.preflight()
     typer.echo(f"run_id={run_id} projected_usd={projected:.4f} ceiling_usd={budget:.4f}")
 
+    started_at = time.perf_counter()
     with Ledger(cfg.runtime.sqlite_path) as ledger:
         ledger.record_run(run_id, task, budget, max_iter)
         pipeline = Pipeline(
@@ -197,6 +202,17 @@ async def _run(
             if cleanup and outcome is not None and outcome.worktrees:
                 with contextlib.suppress(Exception):
                     cleanup_worktrees(Path(repo), outcome.worktrees)
+            # Per-run histograms are emitted regardless of crash/success so
+            # operators can spot pathological tail latencies and overspend
+            # in the same dashboards. Telemetry must never break accounting.
+            with contextlib.suppress(Exception):
+                elapsed = max(0.0, time.perf_counter() - started_at)
+                latency_seconds_per_run().record(elapsed)
+                cost_usd_per_run().record(float(governor.spent_usd))
+                total_tokens = sum(
+                    line.input_tokens + line.output_tokens for line in governor.lines()
+                )
+                tokens_per_run().record(int(total_tokens))
 
         typer.echo(f"\nstatus={outcome.status}")
         typer.echo(f"message={outcome.message}")
