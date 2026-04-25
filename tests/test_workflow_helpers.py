@@ -12,7 +12,10 @@ from ._gitutil import init_git_repo
 
 
 def test_run_pytest_returns_output_with_no_tests(tmp_path: Path) -> None:
-    out = _run_pytest_in_worktree(tmp_path, timeout_s=60)
+    # Trusted mode is the right shape for this helper test: it covers the
+    # path that does not require a container runtime. Sandbox-mode behavior
+    # is exercised in test_sandbox.py.
+    out = _run_pytest_in_worktree(tmp_path, trust="trusted", timeout_s=60)
     # pytest exits with 5 when no tests collected; we just want text back.
     assert "returncode=" in out
 

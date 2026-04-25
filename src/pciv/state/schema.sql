@@ -1,4 +1,9 @@
 -- pciv ledger schema. Idempotent.
+-- Schema version: 2 (Phase 3A: ON DELETE CASCADE on child tables).
+-- Note: SQLite cannot ALTER TABLE to add FOREIGN KEY constraints, so an
+-- existing v1 database stays v1; the constraints below take effect for
+-- fresh databases. A future migration step (or `pciv state reset`) is the
+-- supported upgrade path. PRAGMA user_version is set in db.py.
 
 CREATE TABLE IF NOT EXISTS runs (
     run_id       TEXT PRIMARY KEY,
@@ -18,7 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     files        TEXT NOT NULL,
     status       TEXT NOT NULL DEFAULT 'pending',
     PRIMARY KEY (run_id, task_id),
-    FOREIGN KEY (run_id) REFERENCES runs(run_id)
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS iterations (
@@ -28,7 +33,8 @@ CREATE TABLE IF NOT EXISTS iterations (
     started_at   TEXT NOT NULL,
     ended_at     TEXT,
     outcome      TEXT,
-    PRIMARY KEY (run_id, iteration, phase)
+    PRIMARY KEY (run_id, iteration, phase),
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS agent_invocations (
@@ -45,7 +51,8 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
     started_at    TEXT NOT NULL,
     ended_at      TEXT,
     status        TEXT NOT NULL DEFAULT 'running',
-    error         TEXT
+    error         TEXT,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS cost_events (
@@ -56,7 +63,8 @@ CREATE TABLE IF NOT EXISTS cost_events (
     input_tokens  INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost_usd      REAL NOT NULL,
-    recorded_at   TEXT NOT NULL
+    recorded_at   TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -66,7 +74,8 @@ CREATE TABLE IF NOT EXISTS verdicts (
     reasons      TEXT NOT NULL,
     per_subtask  TEXT NOT NULL,
     recorded_at  TEXT NOT NULL,
-    PRIMARY KEY (run_id, iteration)
+    PRIMARY KEY (run_id, iteration),
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -76,7 +85,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     kind         TEXT NOT NULL,
     path         TEXT NOT NULL,
     sha256       TEXT,
-    recorded_at  TEXT NOT NULL
+    recorded_at  TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_agent_invocations_run ON agent_invocations(run_id);

@@ -111,3 +111,39 @@ def test_implement_agent_rejects_path_escape(
     assert not (tmp_path / "escape.txt").exists()
     # The tool result should have been an error; verify via inspecting that the
     # write did not occur. Tool-level errors do not fail the run.
+
+
+def test_tool_write_file_rejects_out_of_scope_path(tmp_path) -> None:
+    """Regression: write_file enforces subtask.files at the tool boundary."""
+    from pciv.agents.implement_agent import _tool_write_file
+
+    res = _tool_write_file(
+        tmp_path,
+        "src/wrong.py",
+        "x = 1\n",
+        allowed_files=["src/right.py"],
+    )
+    assert res["ok"] is False
+    assert "outside subtask file scope" in res["error"]
+    assert not (tmp_path / "src" / "wrong.py").exists()
+
+
+def test_tool_write_file_allows_in_scope_path(tmp_path) -> None:
+    from pciv.agents.implement_agent import _tool_write_file
+
+    res = _tool_write_file(
+        tmp_path,
+        "src/right.py",
+        "x = 1\n",
+        allowed_files=["src/right.py"],
+    )
+    assert res["ok"] is True
+    assert (tmp_path / "src" / "right.py").read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_tool_write_file_unrestricted_when_allowed_empty(tmp_path) -> None:
+    """Empty allowed_files preserves backwards compatibility."""
+    from pciv.agents.implement_agent import _tool_write_file
+
+    res = _tool_write_file(tmp_path, "any/where.py", "y = 2\n", allowed_files=None)
+    assert res["ok"] is True

@@ -8,8 +8,6 @@ reads and writes are path-confined; the only shell command allowed is
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +16,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..budget import BudgetGovernor
 from ..config import ModelRef
+from ..sandbox import SandboxUnavailableError
+from ..sandbox import run_pytest as sandbox_run_pytest
 from ..state import Ledger
 from ..telemetry import agent_span
 from ..types import Subtask
@@ -158,7 +158,13 @@ def _tool_read_file(worktree: Path, path: str) -> dict[str, Any]:
     return {"ok": True, "content": p.read_text(encoding="utf-8")}
 
 
-def _tool_write_file(worktree: Path, path: str, content: str) -> dict[str, Any]:
+def _tool_write_file(
+    worktree: Path,
+    path: str,
+    content: str,
+    *,
+    allowed_files: list[str] | None = None,
+) -> dict[str, Any]:
     p = _resolve_safe(worktree, path)
     encoded = content.encode("utf-8")
     if len(encoded) > _MAX_WRITE_BYTES:
@@ -166,9 +172,30 @@ def _tool_write_file(worktree: Path, path: str, content: str) -> dict[str, Any]:
             "ok": False,
             "error": f"content size {len(encoded)} bytes exceeds {_MAX_WRITE_BYTES} byte limit",
         }
+    # Enforce the subtask's declared file scope at the tool boundary so the
+    # implement agent cannot write outside the planner's contract. We allow
+    # an empty allowed_files list to mean "unrestricted" so callers that
+    # haven't migrated yet keep working. See harden/phase-2 PCIV item #5.
+    if allowed_files:
+        normalized_path = _normalize_for_scope(path)
+        normalized_allowed = {_normalize_for_scope(f) for f in allowed_files}
+        if normalized_path not in normalized_allowed:
+            return {
+                "ok": False,
+                "error": (
+                    f"path {path!r} is outside subtask file scope; "
+                    f"allowed_files={sorted(normalized_allowed)}"
+                ),
+            }
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return {"ok": True, "bytes": len(encoded)}
+
+
+def _normalize_for_scope(path: str) -> str:
+    """Normalize a path string for scope comparison (POSIX, no leading ./)."""
+    posix = path.replace("\\", "/").lstrip("./")
+    return posix.strip("/")
 
 
 def _tool_list_dir(worktree: Path, path: str) -> dict[str, Any]:
@@ -179,46 +206,56 @@ def _tool_list_dir(worktree: Path, path: str) -> dict[str, Any]:
     return {"ok": True, "entries": entries}
 
 
-def _tool_run_pytest(worktree: Path, args: list[str] | None) -> dict[str, Any]:
+def _tool_run_pytest(
+    worktree: Path,
+    args: list[str] | None,
+    *,
+    trust: str = "untrusted",
+) -> dict[str, Any]:
     safe_args: list[str] = []
     for arg in args or []:
         if arg in _PYTEST_ALLOWED_FLAGS or arg.startswith(_PYTEST_ALLOWED_PREFIXES):
             safe_args.append(arg)
         # Silently drop anything that could modify paths, load plugins, or
         # exfiltrate data (e.g. --rootdir, -p, --import-mode, --pyargs).
-    cmd = [sys.executable, "-m", "pytest", "-q", *safe_args]
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(worktree),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
+        result = sandbox_run_pytest(
+            worktree,
+            trust="trusted" if trust == "trusted" else "untrusted",
+            extra_args=safe_args,
+            timeout_s=300,
         )
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "pytest timed out"}
-    # Truncate noisy output for context efficiency.
-    stdout = result.stdout[-8000:]
-    stderr = result.stderr[-4000:]
+    except SandboxUnavailableError as e:
+        return {"ok": False, "error": f"sandbox unavailable: {e}"}
     return {
         "ok": result.returncode == 0,
         "returncode": result.returncode,
-        "stdout": stdout,
-        "stderr": stderr,
+        "stdout": result.stdout[-8000:],
+        "stderr": result.stderr[-4000:],
+        "sandboxed": result.sandboxed,
+        "runtime": result.runtime,
     }
 
 
-def _dispatch(worktree: Path, name: str, args: dict[str, Any]) -> dict[str, Any]:
+def _dispatch(
+    worktree: Path,
+    name: str,
+    args: dict[str, Any],
+    *,
+    trust: str = "untrusted",
+    allowed_files: list[str] | None = None,
+) -> dict[str, Any]:
     try:
         if name == "read_file":
             return _tool_read_file(worktree, args["path"])
         if name == "write_file":
-            return _tool_write_file(worktree, args["path"], args["content"])
+            return _tool_write_file(
+                worktree, args["path"], args["content"], allowed_files=allowed_files
+            )
         if name == "list_dir":
             return _tool_list_dir(worktree, args["path"])
         if name == "run_pytest":
-            return _tool_run_pytest(worktree, args.get("args"))
+            return _tool_run_pytest(worktree, args.get("args"), trust=trust)
         return {"ok": False, "error": f"unknown tool {name}"}
     except PathEscapeError as e:
         return {"ok": False, "error": str(e)}
@@ -235,6 +272,7 @@ class ImplementAgent:
         run_id: str,
         tracer: Any,
         client: AzureOpenAILike | None = None,
+        task_trust: str = "untrusted",
     ) -> None:
         if model_ref.provider != "azure_openai":
             raise ValueError(
@@ -248,6 +286,7 @@ class ImplementAgent:
         self._run_id = run_id
         self._tracer = tracer
         self._client = client or build_azure_client(model_ref)
+        self._task_trust = task_trust
 
     def run(
         self,
@@ -333,7 +372,13 @@ class ImplementAgent:
                                     "error": f"bad JSON args: {e}",
                                 }
                             else:
-                                result = _dispatch(worktree, tc.function.name, args)
+                                result = _dispatch(
+                                    worktree,
+                                    tc.function.name,
+                                    args,
+                                    trust=self._task_trust,
+                                    allowed_files=list(subtask.files),
+                                )
                             messages.append(
                                 {
                                     "role": "tool",
@@ -363,6 +408,29 @@ class ImplementAgent:
                     span.set_attribute("tokens_out", total_out)
                     span.set_attribute("cost_usd", total_cost)
                     span.set_attribute("turns", turn + 1)
+                    # Post-loop scope check: even if the agent never invoked
+                    # write_file (e.g. it claims completion with no edits)
+                    # the declared changed_files must be inside the planner's
+                    # contract. Empty subtask.files = unrestricted.
+                    if subtask.files:
+                        allowed_norm = {_normalize_for_scope(f) for f in subtask.files}
+                        out_of_scope = [
+                            f
+                            for f in completion.changed_files
+                            if _normalize_for_scope(f) not in allowed_norm
+                        ]
+                        if out_of_scope:
+                            messages.append(
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"changed_files contains paths outside subtask scope: "
+                                        f"{out_of_scope}. Allowed: {sorted(allowed_norm)}. "
+                                        "Re-emit completion JSON with only in-scope files."
+                                    ),
+                                }
+                            )
+                            continue
                     self._ledger.record_cost(
                         self._run_id, invocation_id, model_id, total_in, total_out, total_cost
                     )

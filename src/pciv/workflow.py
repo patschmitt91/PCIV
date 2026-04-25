@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import subprocess
-import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +20,7 @@ from .agents.implement_agent import ImplementResult
 from .budget import BudgetGovernor
 from .config import PlanConfig
 from .merge import MergeResult, squash_integration
+from .sandbox import SandboxUnavailableError, run_pytest
 from .state import Ledger
 from .types import Critique, Plan, Subtask, VerdictReport
 from .worktree import Worktree, create_worktree, current_head, diff_against_base, remove_worktree
@@ -82,7 +81,14 @@ class Pipeline:
 
         self._planner = PlanAgent(cfg.models.planner, governor, ledger, run_id, tracer)
         self._critic = CritiqueAgent(cfg.models.critic, governor, ledger, run_id, tracer)
-        self._implementer = ImplementAgent(cfg.models.implementer, governor, ledger, run_id, tracer)
+        self._implementer = ImplementAgent(
+            cfg.models.implementer,
+            governor,
+            ledger,
+            run_id,
+            tracer,
+            task_trust=cfg.runtime.task_trust,
+        )
         self._verifier = VerifyAgent(cfg.models.verifier, governor, ledger, run_id, tracer)
 
     async def run(self, task: str, max_iter: int) -> RunOutcome:
@@ -116,7 +122,7 @@ class Pipeline:
             for st in plan.subtasks:
                 wt = worktrees[st.id]
                 diffs[st.id] = diff_against_base(wt)
-                tests[st.id] = _run_pytest_in_worktree(wt.path)
+                tests[st.id] = _run_pytest_in_worktree(wt.path, trust=self._cfg.runtime.task_trust)
 
             verdict = self._verifier.run(
                 plan=plan,
@@ -294,29 +300,30 @@ def cleanup_worktrees(repo: Path, worktrees: dict[str, Worktree]) -> None:
             remove_worktree(wt, repo)
 
 
-def _run_pytest_in_worktree(path: Path, timeout_s: int = 300) -> str:
+def _run_pytest_in_worktree(
+    path: Path,
+    *,
+    trust: str = "untrusted",
+    timeout_s: int = 300,
+) -> str:
     """Run pytest inside a worktree and return a truncated stdout+stderr string.
 
-    A missing pytest config or no tests still produces useful output for the
-    verifier. Exceptions are captured and returned as text so a failed
-    invocation never short-circuits the pipeline.
+    Routes through :mod:`pciv.sandbox`; see that module for the threat model
+    and the difference between trusted and untrusted modes. A missing pytest
+    config or no tests still produces useful output for the verifier.
+    Exceptions and sandbox-unavailable conditions are captured and returned
+    as text so a failed invocation never short-circuits the pipeline.
     """
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q"],
-            cwd=str(path),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
-    except subprocess.TimeoutExpired:
-        return "pytest: timed out"
-    except FileNotFoundError:
-        return "pytest: not installed in PATH"
+        result = run_pytest(path, trust=trust, timeout_s=timeout_s)  # type: ignore[arg-type]
+    except SandboxUnavailableError as e:
+        return f"pytest: sandbox unavailable: {e}"
     except Exception as e:
         return f"pytest: failed to invoke: {type(e).__name__}: {e}"
-    header = f"returncode={result.returncode}\n"
+    header = (
+        f"returncode={result.returncode} sandboxed={result.sandboxed}"
+        f" runtime={result.runtime or '-'}\n"
+    )
     stdout = result.stdout[-6000:]
     stderr = result.stderr[-2000:]
     return header + stdout + ("\n--- stderr ---\n" + stderr if stderr else "")

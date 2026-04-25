@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -22,9 +24,12 @@ from .config import load_config
 from .state import Ledger
 from .telemetry import (
     configure_logging,
+    cost_usd_per_run,
+    latency_seconds_per_run,
     runs_failed_total,
     runs_total,
     setup_tracing,
+    tokens_per_run,
 )
 from .workflow import Pipeline, cleanup_worktrees
 
@@ -38,10 +43,28 @@ _VERBOSE_OPT = typer.Option(False, "--verbose", "-v", help="DEBUG-level logs.")
 _QUIET_OPT = typer.Option(False, "--quiet", "-q", help="Only WARNING+ logs.")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from pciv import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+_VERSION_OPT = typer.Option(
+    False,
+    "--version",
+    help="Print the pciv version and exit.",
+    callback=_version_callback,
+    is_eager=True,
+)
+
+
 @app.callback()
 def _root(
     verbose: bool = _VERBOSE_OPT,
     quiet: bool = _QUIET_OPT,
+    version: bool = _VERSION_OPT,
 ) -> None:
     """Configure root logger based on verbosity flags and ``LOG_FORMAT`` env."""
 
@@ -87,10 +110,33 @@ def run_cmd(
         raise
 
 
-def _make_gate(auto_approve: bool) -> Callable[[str, dict[str, Any]], Awaitable[str]]:
+def _make_gate(
+    auto_approve: bool, *, run_id: str = "", state_dir: str = ""
+) -> Callable[[str, dict[str, Any]], Awaitable[str]]:
     async def gate(name: str, payload: dict[str, Any]) -> str:
         typer.echo(f"\n=== HITL gate: {name} ===")
-        typer.echo(json.dumps(payload, indent=2)[:4000])
+        full = json.dumps(payload, indent=2)
+        if len(full) > 4000:
+            # Spool the full payload so the operator can review what was
+            # truncated. Without this marker the prompt silently hides the
+            # tail of large plans/critiques. See harden/phase-2 PCIV item #8.
+            spooled_to = ""
+            if state_dir and run_id:
+                spool_dir = Path(state_dir) / "hitl"
+                with contextlib.suppress(OSError):
+                    spool_dir.mkdir(parents=True, exist_ok=True)
+                    spool_path = spool_dir / f"{run_id}-{name}.json"
+                    spool_path.write_text(full, encoding="utf-8")
+                    spooled_to = str(spool_path)
+            typer.echo(full[:4000])
+            tail_msg = (
+                f"\n... [truncated {len(full) - 4000} chars; full payload at {spooled_to}]"
+                if spooled_to
+                else f"\n... [truncated {len(full) - 4000} chars; spool dir unavailable]"
+            )
+            typer.echo(tail_msg)
+        else:
+            typer.echo(full)
         if auto_approve:
             typer.echo("--yes set, auto-approving")
             return "approve"
@@ -129,6 +175,7 @@ async def _run(
     projected = governor.preflight()
     typer.echo(f"run_id={run_id} projected_usd={projected:.4f} ceiling_usd={budget:.4f}")
 
+    started_at = time.perf_counter()
     with Ledger(cfg.runtime.sqlite_path) as ledger:
         ledger.record_run(run_id, task, budget, max_iter)
         pipeline = Pipeline(
@@ -138,10 +185,34 @@ async def _run(
             run_id=run_id,
             tracer=tracer,
             repo=Path(repo),
-            gate_cb=_make_gate(auto_approve),
+            gate_cb=_make_gate(auto_approve, run_id=run_id, state_dir=cfg.runtime.state_dir),
         )
-        outcome = await pipeline.run(task=task, max_iter=max_iter)
-        ledger.finalize_run(run_id, status=outcome.status)
+        outcome = None
+        try:
+            outcome = await pipeline.run(task=task, max_iter=max_iter)
+            ledger.finalize_run(run_id, status=outcome.status)
+        except Exception:
+            # Mark the run as crashed in the ledger so an operator can tell
+            # the failure mode from a clean abort. See harden/phase-2 PCIV
+            # item #3.
+            with contextlib.suppress(Exception):
+                ledger.finalize_run(run_id, status="crashed")
+            raise
+        finally:
+            if cleanup and outcome is not None and outcome.worktrees:
+                with contextlib.suppress(Exception):
+                    cleanup_worktrees(Path(repo), outcome.worktrees)
+            # Per-run histograms are emitted regardless of crash/success so
+            # operators can spot pathological tail latencies and overspend
+            # in the same dashboards. Telemetry must never break accounting.
+            with contextlib.suppress(Exception):
+                elapsed = max(0.0, time.perf_counter() - started_at)
+                latency_seconds_per_run().record(elapsed)
+                cost_usd_per_run().record(float(governor.spent_usd))
+                total_tokens = sum(
+                    line.input_tokens + line.output_tokens for line in governor.lines()
+                )
+                tokens_per_run().record(int(total_tokens))
 
         typer.echo(f"\nstatus={outcome.status}")
         typer.echo(f"message={outcome.message}")
@@ -155,7 +226,6 @@ async def _run(
             typer.echo(f"merged_tasks={outcome.merge.merged_tasks}")
             typer.echo(f"skipped_tasks={outcome.merge.skipped_tasks}")
         if cleanup and outcome.worktrees:
-            cleanup_worktrees(Path(repo), outcome.worktrees)
             typer.echo(f"cleaned up {len(outcome.worktrees)} worktrees")
         if outcome.status not in _SUCCESS_STATUSES:
             raise typer.Exit(code=1)
@@ -247,6 +317,21 @@ def doctor_cmd(config: str = _DOCTOR_CONFIG_OPT) -> None:
         else:
             env_report[name] = REDACTED
     results.append(_check("env", True, json.dumps(env_report)))
+
+    # Sandbox runtime probe. ``task_trust=untrusted`` is the secure default and
+    # requires Docker or Podman; surface availability without forcing a hard
+    # failure when running locally on a workstation without containers.
+    from .sandbox import detect_runtime
+
+    runtime = detect_runtime()
+    trust_default = "untrusted"
+    with contextlib.suppress(Exception):
+        trust_default = load_config(config).runtime.task_trust
+    sandbox_ok = runtime is not None or trust_default == "trusted"
+    sandbox_detail = f"runtime={runtime or 'none'} task_trust={trust_default}" + (
+        "" if sandbox_ok else " WARNING: install docker/podman or set task_trust=trusted"
+    )
+    results.append(_check("sandbox", sandbox_ok, sandbox_detail))
 
     hard = {"python", "uv", "git", "state_dir_writable"}
     all_ok = all(r["ok"] for r in results if r["check"] in hard)

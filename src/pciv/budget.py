@@ -10,11 +10,18 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 
+from agentcore.budget import BudgetExceeded as _CoreBudgetExceeded
+from agentcore.pricing import cost_for as _core_cost_for
+
 from .config import PlanConfig, Pricing
 
 
-class BudgetExceededError(RuntimeError):
-    pass
+class BudgetExceededError(_CoreBudgetExceeded):
+    """PCIV-specific alias of :class:`agentcore.budget.BudgetExceeded`.
+
+    Inherits so that cross-project tooling can catch the shared base while
+    PCIV-only code keeps using the historical name.
+    """
 
 
 @dataclass(frozen=True)
@@ -26,9 +33,9 @@ class CostLine:
 
 
 def cost_for(model_id: str, input_tokens: int, output_tokens: int, pricing: Pricing) -> float:
-    return (input_tokens / 1_000_000.0) * pricing.input_per_mtok + (
-        output_tokens / 1_000_000.0
-    ) * pricing.output_per_mtok
+    return _core_cost_for(
+        input_tokens, output_tokens, pricing.input_per_mtok, pricing.output_per_mtok
+    )
 
 
 def project_run_cost(cfg: PlanConfig) -> float:
