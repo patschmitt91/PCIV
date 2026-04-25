@@ -60,6 +60,13 @@ pricing:
 
 budget:
   default_ceiling_usd: 2.00
+  # Cross-run rolling-window cap (ADR 0007). Mounts a `budget_window`
+  # table on `runtime.sqlite_path` so two `pciv run` invocations from
+  # the same project share the cap. Comment out (or set to null) to
+  # disable cross-run enforcement; the per-run `--budget` still applies.
+  # `window` is `monthly` (YYYY-MM, UTC) or `daily` (YYYY-MM-DD, UTC).
+  monthly_cap_usd: 50.00
+  window: monthly
   # Rough projection inputs used before any network call.
   projection:
     plan_input_tokens: 4000

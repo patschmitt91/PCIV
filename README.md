@@ -219,8 +219,26 @@ handled. Three modes:
 |------|------------------------------------------------------------|
 | 0    | Run reached a success status (`merged` or `ship`).         |
 | 1    | Run reached a non-success terminal status (rejected, etc). |
-| 2    | Preflight budget exceeded (`BudgetExceededError`).         |
+| 2    | Preflight budget exceeded (`BudgetExceededError`). Includes both per-run cap breaches and cross-run rolling-window cap breaches. |
 | 3    | Config file not found (`FileNotFoundError`).               |
+
+### Cross-run budget enforcement
+
+Per-run `--budget` is a single-process cap. To bound spend across many
+sequential `pciv run` invocations, set `[budget].monthly_cap_usd` (and
+optionally `[budget].window`, `monthly` or `daily`) in `plan.yaml`.
+PCIV mounts a SQLite-backed `agentcore.budget.PersistentBudgetLedger`
+on `runtime.sqlite_path` and refuses to start a run whose projected
+cost wouldn't fit in the rolling window's remaining allowance. See
+[ADR-0007](docs/decisions/0007-cross-run-budget-ledger.md) and
+[tests/test_cross_run_budget.py](tests/test_cross_run_budget.py) for
+the integration test that exercises two sequential CLI invocations
+sharing the cap.
+
+For documented emergencies, `pciv run --ignore-cross-run-cap` skips
+the cross-run check (the per-run `--budget` still applies), logs a
+WARNING with the exhausted-cap message, and records the spend with
+`forced=1` in the `budget_window` audit table.
 
 ## Azure OpenAI setup
 

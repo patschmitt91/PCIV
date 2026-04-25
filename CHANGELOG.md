@@ -14,6 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cross-run rolling-window budget cap (ADR 0007). Two new optional
+  fields under `[budget]` in `plan.yaml`:
+  - `monthly_cap_usd: <float>` — opt-in. When set, every `pciv run`
+    consults a SQLite-backed `agentcore.budget.PersistentBudgetLedger`
+    mounted on `runtime.sqlite_path` and refuses to start if the
+    rolling window's remaining allowance can't fit the projected run
+    cost. Default `null` keeps existing per-run-only behaviour.
+  - `window: monthly|daily` — UTC-keyed bucket. Default `monthly`
+    (`YYYY-MM`); `daily` uses `YYYY-MM-DD`.
+- New CLI flag `--ignore-cross-run-cap` for documented emergencies.
+  Skips both preflight checks (logs WARNING) and records the actual
+  spend via `force_record(reason=...)`, which writes a `forced=1` row
+  to `budget_window` for audit. Per-run `--budget` still applies.
+- `tests/test_cross_run_budget.py` (3 tests):
+  - Two sequential `pciv run` invocations: the second is rejected at
+    preflight with exit code 2 once the window is exhausted, and no
+    new row is written to the ledger.
+  - `--ignore-cross-run-cap` overrides a pre-seeded exhausted ledger
+    and writes a `forced=1` audit row.
+  - `monthly_cap_usd` omitted → no ledger opened, no
+    `budget_window` table created, existing behaviour preserved.
 - Diff-time secret-leak detection wired through both Implement and
   Verify, backed by the new `agentcore.scan.DiffScanner`. ADR 0006.
   - `_tool_write_file` now scans content before writing and refuses
@@ -47,12 +68,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `agentcore` pin bumped from `git+...@v0.2.0` to `git+...@v0.3.0`.
-  The new release ships `agentcore.scan` and a corrected README; see
-  agentcore CHANGELOG for the full diff.
-- `[tool.uv.sources]` now declares an editable override for sibling
-  `agentcore` checkouts so local dev works before the v0.3.0 tag is
-  pushed. `uv sync` on a fresh clone still resolves from the git pin.
+- `agentcore` pin bumped from `git+...@v0.3.0` to `git+...@v0.4.0`.
+  The new release ships `agentcore.budget.PersistentBudgetLedger`;
+  see agentcore CHANGELOG for the full diff. (Earlier in the same
+  pre-release window the pin was bumped from `v0.2.0` to `v0.3.0`
+  for the diff-scanner work.)
+- `pciv.config.BudgetConfig` gains `monthly_cap_usd: float | None`
+  (default `None`) and `window: Literal["daily", "monthly"]`
+  (default `"monthly"`). Existing configs validate unchanged.
+- `pciv run` banner now prints a `cross_run_window=… cross_run_spent_usd=…
+  cross_run_cap_usd=…` line when the cross-run cap is active.
+- `[tool.uv.sources]` declares an editable override for sibling
+  `agentcore` checkouts so local dev works before tagged releases
+  are pushed. `uv sync` on a fresh clone still resolves from the
+  git pin.
 
 ## [0.2.0] — 2026-04-24
 

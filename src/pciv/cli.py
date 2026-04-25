@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from agentcore.budget import BudgetExceeded as _CoreBudgetExceeded
+from agentcore.budget import PersistentBudgetLedger
 
 from .budget import BudgetExceededError, BudgetGovernor
 from .config import load_config
@@ -91,11 +93,23 @@ def run_cmd(
     cleanup: bool = typer.Option(
         False, "--cleanup", help="Remove per-subtask worktrees and branches at run end."
     ),
+    ignore_cross_run_cap: bool = typer.Option(
+        False,
+        "--ignore-cross-run-cap",
+        help=(
+            "Bypass the cross-run rolling-window cap from `[budget].monthly_cap_usd`. "
+            "Logs WARNING and records the spend with `forced=1` in the persistent "
+            "ledger for audit. Per-run `--budget` still applies. Use only for "
+            "documented emergencies."
+        ),
+    ),
 ) -> None:
     """Execute the pciv workflow end-to-end."""
     runs_total().add(1)
     try:
-        asyncio.run(_run(task, budget, max_iter, config, repo, yes, cleanup))
+        asyncio.run(
+            _run(task, budget, max_iter, config, repo, yes, cleanup, ignore_cross_run_cap)
+        )
     except BudgetExceededError as e:
         runs_failed_total().add(1)
         typer.echo(f"budget: {e}", err=True)
@@ -161,6 +175,7 @@ async def _run(
     repo: str,
     auto_approve: bool,
     cleanup: bool,
+    ignore_cross_run_cap: bool = False,
 ) -> None:
     cfg = load_config(config)
     Path(cfg.runtime.state_dir).mkdir(parents=True, exist_ok=True)
@@ -170,10 +185,59 @@ async def _run(
         conn_string_env=cfg.telemetry.app_insights_connection_string_env,
     )
 
+    # Cross-run rolling-window cap (ADR 0007). Mounts the `budget_window`
+    # table on the same SQLite file the run ledger uses so a single
+    # `pciv state` directory captures both per-run and cross-run spend.
+    # ``monthly_cap_usd is None`` disables the cross-run check entirely
+    # while leaving the per-run governor in place.
+    cross_run_ledger: PersistentBudgetLedger | None = None
+    if cfg.budget.monthly_cap_usd is not None:
+        cross_run_ledger = PersistentBudgetLedger(
+            cfg.runtime.sqlite_path,
+            cap_usd=cfg.budget.monthly_cap_usd,
+            window=cfg.budget.window,
+        )
+        remaining = cross_run_ledger.remaining_in_current_window()
+        spent = cross_run_ledger.spent_in_current_window()
+        if remaining <= 0:
+            msg = (
+                f"cross-run {cfg.budget.window} cap exhausted: spent "
+                f"${spent:.4f} / cap ${cfg.budget.monthly_cap_usd:.4f} "
+                f"(window={cross_run_ledger.window_key})"
+            )
+            if not ignore_cross_run_cap:
+                cross_run_ledger.close()
+                raise BudgetExceededError(msg)
+            logging.getLogger(__name__).warning(
+                "ignoring cross-run cap (--ignore-cross-run-cap): %s", msg
+            )
+
     run_id = str(uuid.uuid4())
     governor = BudgetGovernor(ceiling_usd=budget, cfg=cfg)
     projected = governor.preflight()
+    # Cross-run preflight: compare *projected* cost (not the per-run
+    # --budget upper bound) against the remaining window allowance. The
+    # per-run --budget is the operator's authorization for one run, not a
+    # guarantee they'll spend that much; rejecting just because --budget
+    # exceeds remaining would block normal usage near the end of a window.
+    if cross_run_ledger is not None and not ignore_cross_run_cap:
+        remaining = cross_run_ledger.remaining_in_current_window()
+        if projected > remaining:
+            cross_run_ledger.close()
+            raise BudgetExceededError(
+                f"projected cost ${projected:.6f} exceeds cross-run remaining "
+                f"${remaining:.6f} (window={cross_run_ledger.window_key}, "
+                f"cap=${cfg.budget.monthly_cap_usd:.4f}). "
+                f"Lower the run's footprint or pass --ignore-cross-run-cap."
+            )
+
     typer.echo(f"run_id={run_id} projected_usd={projected:.4f} ceiling_usd={budget:.4f}")
+    if cross_run_ledger is not None:
+        typer.echo(
+            f"cross_run_window={cross_run_ledger.window_key} "
+            f"cross_run_spent_usd={cross_run_ledger.spent_in_current_window():.6f} "
+            f"cross_run_cap_usd={cfg.budget.monthly_cap_usd:.4f}"
+        )
 
     started_at = time.perf_counter()
     with Ledger(cfg.runtime.sqlite_path) as ledger:
@@ -213,6 +277,30 @@ async def _run(
                     line.input_tokens + line.output_tokens for line in governor.lines()
                 )
                 tokens_per_run().record(int(total_tokens))
+            # Persist actual spend to the cross-run ledger. Always run on
+            # success or crash so a partial run still counts against the
+            # window cap. ``record_spend`` may raise if the run pushed us
+            # over the cap; that is logged but does not mask the run's own
+            # exit status. The emergency-override path uses ``force_record``
+            # so the row is marked ``forced=1`` for audit.
+            if cross_run_ledger is not None:
+                actual_spend = float(governor.spent_usd)
+                try:
+                    if ignore_cross_run_cap:
+                        cross_run_ledger.force_record(
+                            actual_spend,
+                            reason=f"--ignore-cross-run-cap run_id={run_id}",
+                        )
+                    else:
+                        with contextlib.suppress(_CoreBudgetExceeded):
+                            # Surfacing a post-hoc over-cap as a hard error
+                            # would mask the actual run outcome. Operators
+                            # see the breach via the next run's preflight.
+                            cross_run_ledger.record_spend(
+                                actual_spend, note=f"run_id={run_id}"
+                            )
+                finally:
+                    cross_run_ledger.close()
 
         typer.echo(f"\nstatus={outcome.status}")
         typer.echo(f"message={outcome.message}")

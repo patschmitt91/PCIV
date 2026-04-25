@@ -52,6 +52,13 @@ class Projection(BaseModel):
 class BudgetConfig(BaseModel):
     default_ceiling_usd: float
     projection: Projection
+    # Cross-run rolling-window cap (ADR 0007). When set, every `pciv run`
+    # consults a persistent SQLite ledger and refuses to start if the
+    # window is exhausted. ``None`` disables the cross-run check entirely
+    # (per-run ``--budget`` still applies). ``window`` selects the rolling
+    # bucket (``daily`` or ``monthly``).
+    monthly_cap_usd: float | None = None
+    window: Literal["daily", "monthly"] = "monthly"
 
 
 class Iteration(BaseModel):
