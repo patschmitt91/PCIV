@@ -13,11 +13,13 @@ tasks, backed by Azure OpenAI and per-subtask git worktrees.
 ## Status
 
 Alpha / research prototype, v0.2.0. Four phases are wired and tested with
-mocked Azure clients (71 tests, 87% coverage). No live-provider results
-yet. The orchestration spine is a plain async `Pipeline`; a port to
-[microsoft/agent-framework][af] graph primitives is specified in
-[ADR-0001](docs/decisions/0001-agent-framework-port.md) and tracked as
-v0.3.
+mocked Azure clients (71 tests, 87% coverage). Live-provider runs against
+[SWE-bench Verified](https://www.swebench.com/) are in progress via
+`scripts/swe_bench_run.py`; see `docs/next-iteration-brief.md` for the
+benchmark strategy and current results. The orchestration spine is a plain
+async `Pipeline`; a port to [microsoft/agent-framework][af] graph primitives
+is specified in [ADR-0001](docs/decisions/0001-agent-framework-port.md) and
+tracked as v0.3.
 
 v0.2 added two ratchets that close the most credibility-damaging gaps in
 v0.1: diff-time secret-leak detection ([ADR-0006](docs/decisions/0006-diff-time-secret-leak-detection.md))
