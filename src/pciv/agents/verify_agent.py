@@ -16,7 +16,11 @@ whether to ship, iterate, or reject. Output ONLY this JSON:
 Rules:
 - Use "iterate" for fixable gaps that another implementation pass can address.
 - Use "reject" for unsafe or fundamentally broken outputs that should not be retried.
-- Use "ship" only when all subtasks meet their acceptance criteria and tests pass.
+- Use "ship" when subtasks meet their acceptance criteria and the implementation's
+  changes are correct. Pre-existing test failures that are unrelated to the change
+  (baseline failures present before the fix) are acceptable. Focus on whether the
+  implementation correctly addresses the acceptance criteria and does not introduce
+  new regressions. If the diff looks correct and the relevant tests pass, ship it.
 Return JSON only. No prose. No code fences.
 """
 

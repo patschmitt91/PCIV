@@ -7,10 +7,10 @@
 #
 #   AZURE_OPENAI_ENDPOINT
 #   AZURE_OPENAI_API_KEY
-#   AZURE_OPENAI_PLAN_DEPLOYMENT      -> replaces `azure-reasoning`
-#   AZURE_OPENAI_CRITIC_DEPLOYMENT    -> replaces `azure-reasoning`
-#   AZURE_OPENAI_IMPLEMENT_DEPLOYMENT -> replaces `azure-codegen`
-#   AZURE_OPENAI_VERIFY_DEPLOYMENT    -> replaces `azure-reasoning`
+#   AZURE_OPENAI_PLANNER_DEPLOYMENT     -> replaces planner deployment
+#   AZURE_OPENAI_CRITIC_DEPLOYMENT      -> replaces critic deployment
+#   AZURE_OPENAI_IMPLEMENTER_DEPLOYMENT -> replaces implementer deployment
+#   AZURE_OPENAI_VERIFIER_DEPLOYMENT    -> replaces verifier deployment
 #
 # See the Azure OpenAI models catalog for the list of model ids that can
 # back a deployment: https://learn.microsoft.com/azure/ai-services/openai/concepts/models
@@ -20,52 +20,49 @@ version: 1
 models:
   planner:
     provider: azure_openai
-    deployment: azure-reasoning
-    api_version: "2024-10-21"
+    deployment: gpt-4o
+    api_version: "2025-01-01-preview"
     max_tokens: 8192
     timeout_s: 180
     retries: 3
   critic:
     provider: azure_openai
-    deployment: azure-reasoning
-    api_version: "2024-10-21"
+    deployment: gpt-4o
+    api_version: "2025-01-01-preview"
     max_tokens: 4096
     timeout_s: 120
     retries: 2
   implementer:
     provider: azure_openai
-    deployment: azure-codegen
-    api_version: "2024-10-21"
+    deployment: gpt-4o
+    api_version: "2025-01-01-preview"
     max_tokens: 8192
     timeout_s: 900
     retries: 1
     max_turns: 40
-    max_concurrency: 3
+    max_concurrency: 1
   verifier:
     provider: azure_openai
-    deployment: azure-reasoning
-    api_version: "2024-10-21"
+    deployment: gpt-4o
+    api_version: "2025-01-01-preview"
     max_tokens: 8192
     timeout_s: 240
     retries: 2
 
 pricing:
-  # USD per 1M tokens. Update to match your negotiated Azure OpenAI rates.
-  azure-reasoning:
+  # USD per 1M tokens — gpt-4o standard rates (verify at aka.ms/aoai-pricing).
+  gpt-4o:
     input_per_mtok: 2.50
     output_per_mtok: 10.00
-  azure-codegen:
-    input_per_mtok: 1.25
-    output_per_mtok: 5.00
 
 budget:
-  default_ceiling_usd: 2.00
+  default_ceiling_usd: 1.00
   # Cross-run rolling-window cap (ADR 0007). Mounts a `budget_window`
   # table on `runtime.sqlite_path` so two `pciv run` invocations from
   # the same project share the cap. Comment out (or set to null) to
   # disable cross-run enforcement; the per-run `--budget` still applies.
   # `window` is `monthly` (YYYY-MM, UTC) or `daily` (YYYY-MM-DD, UTC).
-  monthly_cap_usd: 50.00
+  monthly_cap_usd: 60.00
   window: monthly
   # Rough projection inputs used before any network call.
   projection:
@@ -80,7 +77,7 @@ budget:
     expected_subtasks: 3
 
 iteration:
-  max_rounds: 2
+  max_rounds: 3
   max_plan_revisions: 2
 
 gates:
@@ -99,3 +96,4 @@ telemetry:
 runtime:
   state_dir: .pciv
   sqlite_path: .pciv/ledger.db
+  task_trust: trusted
